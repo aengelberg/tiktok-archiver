@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -22,26 +23,26 @@ func main() {
 
 	input := widget.NewEntry()
 	input.SetPlaceHolder("Enter the path to the text file")
+	progress := widget.NewProgressBar()
 	startBtn := widget.NewButton("Start Download", func() {
-		err := downloadVideos(input.Text)
+		err := downloadVideos(input.Text, progress)
 		if err != nil {
 			dialog.ShowError(err, w)
-		} else {
-			dialog.ShowInformation("Success", "All videos downloaded successfully!", w)
 		}
 	})
 
 	content := container.NewVBox(
 		input,
 		startBtn,
+		progress,
 	)
 
 	w.SetContent(content)
-	w.Resize(fyne.NewSize(400, 100))
+	w.Resize(fyne.NewSize(400, 150))
 	w.ShowAndRun()
 }
 
-func downloadVideos(filepath string) error {
+func downloadVideos(filepath string, progress *widget.ProgressBar) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return err
@@ -53,6 +54,7 @@ func downloadVideos(filepath string) error {
 	linkPattern := regexp.MustCompile(`^Link:\s+(.+)`)
 
 	var date, link string
+	var links []string
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -69,13 +71,45 @@ func downloadVideos(filepath string) error {
 		} else if linkMatch := linkPattern.FindStringSubmatch(line); linkMatch != nil {
 			link = linkMatch[1]
 			if date != "" && link != "" {
-				if err := downloadVideo(date, link); err != nil {
-					return err
-				}
+				links = append(links, fmt.Sprintf("%s %s", date, link))
 				date = ""
 				link = ""
 			}
 		}
+	}
+
+	progress.Max = float64(len(links))
+	progress.SetValue(0)
+
+	var wg sync.WaitGroup
+	failedLinks := make(chan string, len(links))
+
+	for _, link := range links {
+		wg.Add(1)
+		go func(link string) {
+			defer wg.Done()
+
+			parts := strings.Split(link, " ")
+			date, url := parts[0], parts[1]
+
+			if err := downloadVideo(date, url); err != nil {
+				failedLinks <- fmt.Sprintf("%s %s", date, url)
+			}
+
+			progress.SetValue(progress.Value + 1)
+		}(link)
+	}
+
+	wg.Wait()
+	close(failedLinks)
+
+	var failed []string
+	for link := range failedLinks {
+		failed = append(failed, link)
+	}
+
+	if len(failed) > 0 {
+		return fmt.Errorf("Failed to download the following videos:\n%s", strings.Join(failed, "\n"))
 	}
 
 	return nil
