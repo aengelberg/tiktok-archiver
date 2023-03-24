@@ -2,118 +2,102 @@ package main
 
 import (
 	"bufio"
-	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
-type Video struct {
-	Date string `json:"Date"`
-	Link string `json:"Link"`
-}
+func main() {
+	a := app.New()
+	w := a.NewWindow("TikTok Video Downloader")
 
-func parseArchive(archivePath string) ([]Video, error) {
-	var videos []Video
-
-	archive, err := os.Open(archivePath)
-	if err != nil {
-		return nil, err
-	}
-	defer archive.Close()
-
-	scanner := bufio.NewScanner(archive)
-	var currentVideo Video
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "Date: ") {
-			if currentVideo.Link != "" {
-				videos = append(videos, currentVideo)
-			}
-			currentVideo = Video{Date: line[len("Date: "):]}
-		} else if strings.HasPrefix(line, "Link: ") {
-			currentVideo.Link = line[len("Link: "):]
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	if currentVideo.Link != "" {
-		videos = append(videos, currentVideo)
-	}
-
-	return videos, nil
-}
-
-func downloadVideos(videos []Video) error {
-	for _, video := range videos {
-		err := downloadVideo(video)
+	input := widget.NewEntry()
+	input.SetPlaceHolder("Enter the path to the text file")
+	startBtn := widget.NewButton("Start Download", func() {
+		err := downloadVideos(input.Text)
 		if err != nil {
+			dialog.ShowError(err, w)
+		} else {
+			dialog.ShowInformation("Success", "All videos downloaded successfully!", w)
+		}
+	})
+
+	content := container.NewVBox(
+		input,
+		startBtn,
+	)
+
+	w.SetContent(content)
+	w.Resize(fyne.NewSize(400, 100))
+	w.ShowAndRun()
+}
+
+func downloadVideos(filepath string) error {
+	file, err := os.Open(filepath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	datePattern := regexp.MustCompile(`^Date:\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})`)
+	linkPattern := regexp.MustCompile(`^Link:\s+(.+)`)
+
+	var date, link string
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
+
+		line = strings.TrimSpace(line)
+
+		if dateMatch := datePattern.FindStringSubmatch(line); dateMatch != nil {
+			date = strings.Replace(dateMatch[1], ":", "-", -1)
+		} else if linkMatch := linkPattern.FindStringSubmatch(line); linkMatch != nil {
+			link = linkMatch[1]
+			if date != "" && link != "" {
+				if err := downloadVideo(date, link); err != nil {
+					return err
+				}
+				date = ""
+				link = ""
+			}
+		}
 	}
+
 	return nil
 }
 
-func downloadVideo(video Video) error {
-	resp, err := http.Get(video.Link)
+func downloadVideo(date, link string) error {
+	resp, err := http.Get(link)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	filename := video.Date[:10] + "-" + strings.ReplaceAll(video.Date[11:], ":", "-") + ".mp4"
-	out, err := os.Create(filename)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download video: %s", resp.Status)
+	}
+
+	output, err := os.Create(fmt.Sprintf("%s.mp4", date))
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer output.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func main() {
-	myApp := app.New()
-	myWindow := myApp.NewWindow("TikTok Downloader")
-	input := widget.NewEntry()
-	input.SetPlaceHolder("Enter path to TikTok archive")
-
-	output := widget.NewLabel("")
-
-	button := widget.NewButton("Download", func() {
-		archivePath := input.Text
-		if archivePath == "" {
-			dialog.ShowError(errors.New("Archive path is empty"), myWindow)
-			return
-		}
-		videos, err := parseArchive(archivePath)
-		if err != nil {
-			dialog.ShowError(err, myWindow)
-			return
-		}
-		err = downloadVideos(videos)
-		if err != nil {
-			dialog.ShowError(err, myWindow)
-			return
-		}
-		output.SetText("Download complete!")
-	})
-
-	container := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), input, button, output)
-	myWindow.SetContent(container)
-	myWindow.Resize(fyne.NewSize(400, 200))
-	myWindow.ShowAndRun()
+	_, err = io.Copy(output, resp.Body)
+	return err
 }
