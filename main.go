@@ -24,8 +24,15 @@ func main() {
 	input := widget.NewEntry()
 	input.SetPlaceHolder("Enter the path to the text file")
 	progress := widget.NewProgressBar()
+
+	logs := widget.NewMultiLineEntry()
+	logs.Wrapping = fyne.TextWrapBreak
+	logs.Disable()
+	logsScroller := container.NewVScroll(logs)
+	logsScroller.SetMinSize(fyne.NewSize(0, 100))
+
 	startBtn := widget.NewButton("Start Download", func() {
-		err := downloadVideos(input.Text, progress)
+		err := downloadVideos(input.Text, progress, logs)
 		if err != nil {
 			dialog.ShowError(err, w)
 		}
@@ -35,14 +42,19 @@ func main() {
 		input,
 		startBtn,
 		progress,
+		logsScroller,
 	)
 
 	w.SetContent(content)
-	w.Resize(fyne.NewSize(400, 150))
+	w.Resize(fyne.NewSize(400, 300))
 	w.ShowAndRun()
 }
 
-func downloadVideos(filepath string, progress *widget.ProgressBar) error {
+func updateLog(logs *widget.Entry, msg string) {
+	logs.SetText(logs.Text + msg + "\n")
+}
+
+func downloadVideos(filepath string, progress *widget.ProgressBar, logs *widget.Entry) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return err
@@ -92,8 +104,12 @@ func downloadVideos(filepath string, progress *widget.ProgressBar) error {
 			parts := strings.Split(link, " ")
 			date, url := parts[0], parts[1]
 
+			updateLog(logs, fmt.Sprintf("Starting download: %s", date))
 			if err := downloadVideo(date, url); err != nil {
+				updateLog(logs, fmt.Sprintf("Failed to download: %s", date))
 				failedLinks <- fmt.Sprintf("%s %s", date, url)
+			} else {
+				updateLog(logs, fmt.Sprintf("Finished download: %s", date))
 			}
 
 			progress.SetValue(progress.Value + 1)
