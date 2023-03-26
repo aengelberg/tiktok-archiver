@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"fyne.io/fyne/theme"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -129,6 +130,13 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 var cancelDownload = make(chan struct{})
 var downloadWg sync.WaitGroup
 
+type DownloadItem struct {
+	FileName    string
+	ProgressBar *widget.ProgressBar
+	StatusIcon  *widget.Icon
+	Status      string // "queued", "in progress", "succeeded", or "failed"
+}
+
 func main() {
 	a := app.New()
 	w := a.NewWindow("TikTok Video Downloader")
@@ -144,6 +152,10 @@ func main() {
 	progressBar := widget.NewProgressBar()
 	logOutput := widget.NewMultiLineEntry()
 
+	// Create a container to hold individual download items
+	downloadItemsContainer := container.NewVBox()
+	scrollContainer := container.NewVScroll(downloadItemsContainer)
+
 	content := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
 		container.NewHBox(outputButton, outputLabel),
@@ -153,6 +165,8 @@ func main() {
 		progressBar,
 		widget.NewLabel("Log:"),
 		logOutput,
+		widget.NewLabel("Individual Downloads:"),
+		scrollContainer, // Add the scroll container to the main UI
 	)
 	w.SetContent(content)
 
@@ -191,6 +205,8 @@ func main() {
 				return
 			}
 
+			downloadItems := make([]*DownloadItem, len(links))
+
 			progressBar.Min = 0
 			progressBar.Max = float64(len(links))
 
@@ -200,6 +216,21 @@ func main() {
 			for i, link := range links {
 				filename := fmt.Sprintf("%s.mp4", strings.Replace(link.Date, ":", "-", -1))
 				filePath := filepath.Join(outputDir, filename)
+				// Create a DownloadItem for each file and add it to the downloadItemsContainer
+				downloadItem := &DownloadItem{
+					FileName:    filename,
+					ProgressBar: widget.NewProgressBar(),
+					StatusIcon:  widget.NewIcon(nil), // Set the initial icon to nil
+					Status:      "queued",
+				}
+				downloadItems[i] = downloadItem
+
+				// Add the downloadItem's UI elements to the downloadItemsContainer
+				downloadItemsContainer.Add(container.NewHBox(
+					downloadItem.StatusIcon,
+					widget.NewLabel(downloadItem.FileName),
+					downloadItem.ProgressBar,
+				))
 
 				workerPool <- struct{}{} // Acquire a worker from the pool
 
@@ -207,11 +238,18 @@ func main() {
 					defer func() { <-workerPool }() // Release the worker back to the pool
 
 					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
+					downloadItems[i].Status = "in progress"
+					downloadItems[i].StatusIcon.SetResource(theme.DocumentSaveIcon)
+
 					err := downloadFile(link.Link, filePath)
 					if err != nil {
 						logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
+						downloadItems[i].StatusIcon.SetResource(theme.CancelIcon)
+						downloadItems[i].Status = "failed"
 					} else {
 						logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
+						downloadItems[i].StatusIcon.SetResource(theme.ConfirmIcon)
+						downloadItems[i].Status = "succeeded"
 					}
 					progressBar.SetValue(float64(i + 1))
 					downloadWg.Done()
