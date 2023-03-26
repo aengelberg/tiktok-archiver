@@ -1,153 +1,171 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
-	"regexp"
+	"path/filepath"
 	"strings"
-	"sync"
 
-	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
-func main() {
-	a := app.New()
-	w := a.NewWindow("TikTok Video Downloader")
-
-	input := widget.NewEntry()
-	input.SetPlaceHolder("Enter the path to the text file")
-	progress := widget.NewProgressBar()
-
-	logs := widget.NewMultiLineEntry()
-	logs.Wrapping = fyne.TextWrapBreak
-	logs.Disable()
-	logsScroller := container.NewVScroll(logs)
-	logsScroller.SetMinSize(fyne.NewSize(0, 100))
-
-	startBtn := widget.NewButton("Start Download", func() {
-		err := downloadVideos(input.Text, progress, logs)
-		if err != nil {
-			dialog.ShowError(err, w)
-		}
-	})
-
-	content := container.NewVBox(
-		input,
-		startBtn,
-		progress,
-		logsScroller,
-	)
-
-	w.SetContent(content)
-	w.Resize(fyne.NewSize(400, 300))
-	w.ShowAndRun()
+type UserData struct {
+	Video struct {
+		Videos struct {
+			VideoList []struct {
+				Date  string `json:"Date"`
+				Link  string `json:"Link"`
+				Likes int    `json:"Likes"`
+			} `json:"VideoList"`
+		} `json:"Videos"`
+	} `json:"Video"`
 }
 
-func updateLog(logs *widget.Entry, msg string) {
-	logs.SetText(logs.Text + msg + "\n")
-}
-
-func downloadVideos(filepath string, progress *widget.ProgressBar, logs *widget.Entry) error {
-	file, err := os.Open(filepath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	reader := bufio.NewReader(file)
-	datePattern := regexp.MustCompile(`^Date:\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})`)
-	linkPattern := regexp.MustCompile(`^Link:\s+(.+)`)
-
-	var date, link string
-	var links []string
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-
-		line = strings.TrimSpace(line)
-
-		if dateMatch := datePattern.FindStringSubmatch(line); dateMatch != nil {
-			date = strings.Replace(dateMatch[1], ":", "-", -1)
-		} else if linkMatch := linkPattern.FindStringSubmatch(line); linkMatch != nil {
-			link = linkMatch[1]
-			if date != "" && link != "" {
-				links = append(links, fmt.Sprintf("%s %s", date, link))
-				date = ""
-				link = ""
-			}
-		}
-	}
-
-	progress.Max = float64(len(links))
-	progress.SetValue(0)
-
-	var wg sync.WaitGroup
-	failedLinks := make(chan string, len(links))
-
-	for _, link := range links {
-		wg.Add(1)
-		go func(link string) {
-			defer wg.Done()
-
-			parts := strings.Split(link, " ")
-			date, url := parts[0], parts[1]
-
-			updateLog(logs, fmt.Sprintf("Starting download: %s", date))
-			if err := downloadVideo(date, url); err != nil {
-				updateLog(logs, fmt.Sprintf("Failed to download: %s", date))
-				failedLinks <- fmt.Sprintf("%s %s", date, url)
-			} else {
-				updateLog(logs, fmt.Sprintf("Finished download: %s", date))
-			}
-
-			progress.SetValue(progress.Value + 1)
-		}(link)
-	}
-
-	wg.Wait()
-	close(failedLinks)
-
-	var failed []string
-	for link := range failedLinks {
-		failed = append(failed, link)
-	}
-
-	if len(failed) > 0 {
-		return fmt.Errorf("Failed to download the following videos:\n%s", strings.Join(failed, "\n"))
-	}
-
-	return nil
-}
-
-func downloadVideo(date, link string) error {
-	resp, err := http.Get(link)
+func downloadFile(url string, filepath string, progress *widget.ProgressBar, logOutput *widget.Entry) error {
+	resp, err := http.Get(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download video: %s", resp.Status)
-	}
-
-	output, err := os.Create(fmt.Sprintf("%s.mp4", date))
+	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}
-	defer output.Close()
+	defer out.Close()
 
-	_, err = io.Copy(output, resp.Body)
-	return err
+	counter := &WriteCounter{ProgressBar: progress}
+	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type WriteCounter struct {
+	Total       int64
+	ProgressBar *widget.ProgressBar
+}
+
+func (wc *WriteCounter) Write(p []byte) (int, error) {
+	n := len(p)
+	wc.Total += int64(n)
+	wc.ProgressBar.SetValue(float64(wc.Total) / float64(wc.ProgressBar.Max))
+	return n, nil
+}
+
+type VideoLink struct {
+	Date string
+	Link string
+}
+
+func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
+	fileContent, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %v", err)
+	}
+
+	var links []VideoLink
+
+	switch fileType {
+	case "Posts.txt":
+		lines := strings.Split(string(fileContent), "\n")
+		for i := 0; i < len(lines); i++ {
+			line := lines[i]
+			if strings.HasPrefix(line, "Date:") {
+				date := strings.TrimSpace(strings.TrimPrefix(line, "Date:"))
+				i++
+				if i < len(lines) && strings.HasPrefix(lines[i], "Link:") {
+					link := strings.TrimSpace(strings.TrimPrefix(lines[i], "Link:"))
+					links = append(links, VideoLink{Date: date, Link: link})
+				}
+			}
+		}
+	case "user_data.json":
+		var userData UserData
+		err := json.Unmarshal(fileContent, &userData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse JSON file: %v", err)
+		}
+
+		for _, video := range userData.Video.Videos.VideoList {
+			links = append(links, VideoLink{Date: video.Date, Link: video.Link})
+		}
+	default:
+		return nil, fmt.Errorf("unsupported file type")
+	}
+
+	return links, nil
+}
+
+func main() {
+	a := app.New()
+	w := a.NewWindow("TikTok Video Downloader")
+
+	// UI elements
+	filePathInput := widget.NewEntry()
+	filePathInput.SetPlaceHolder("Path to Posts.txt or user_data.json")
+	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, nil)
+	downloadButton := widget.NewButton("Download", nil)
+	progressBar := widget.NewProgressBar()
+	logOutput := widget.NewMultiLineEntry()
+
+	content := container.NewVBox(
+		filePathInput,
+		fileTypeSelect,
+		downloadButton,
+		progressBar,
+		widget.NewLabel("Log:"),
+		logOutput,
+	)
+	w.SetContent(content)
+
+	// Download button action
+	downloadButton.OnTapped = func() {
+		filePath := filePathInput.Text
+		fileType := fileTypeSelect.Selected
+
+		// Read and parse the input file
+		links, err := readAndParseFile(filePath, fileType)
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+
+		// Download videos
+		downloadPath, err := os.Getwd()
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+
+		progressBar.Min = 0
+		progressBar.Max = float64(len(links))
+
+		for i, link := range links {
+			filename := fmt.Sprintf("%s.mp4", strings.Replace(link.Date, ":", "-", -1))
+			filePath := filepath.Join(downloadPath, filename)
+
+			logOutput.SetText(fmt.Sprintf("Downloading %s...\n", filename))
+			err := downloadFile(link.Link, filePath, progressBar, logOutput)
+			if err != nil {
+				logOutput.SetText(fmt.Sprintf("Failed to download %s\n", filename))
+			} else {
+				logOutput.SetText(fmt.Sprintf("Downloaded %s\n", filename))
+			}
+			progressBar.SetValue(float64(i + 1))
+		}
+
+		logOutput.SetText("Finished downloading videos.")
+	}
+
+	w.ShowAndRun()
 }
