@@ -69,7 +69,10 @@ type WriteCounter struct {
 func (wc *WriteCounter) Write(p []byte) (int, error) {
 	n := len(p)
 	wc.Total += int64(n)
-	wc.ProgressBar.SetValue(float64(wc.Total) / float64(wc.ContentLength))
+	floatValue := float64(wc.Total) / float64(wc.ContentLength)
+	if floatValue-wc.ProgressBar.Value > 0.01 || wc.Total == wc.ContentLength {
+		wc.ProgressBar.SetValue(floatValue)
+	}
 	return n, nil
 }
 
