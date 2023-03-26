@@ -22,7 +22,7 @@ type UserData struct {
 			VideoList []struct {
 				Date  string `json:"Date"`
 				Link  string `json:"Link"`
-				Likes int    `json:"Likes"`
+				Likes string `json:"Likes"`
 			} `json:"VideoList"`
 		} `json:"Videos"`
 	} `json:"Video"`
