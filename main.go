@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	"fyne.io/fyne"
-	"fyne.io/fyne/storage"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 )
 
