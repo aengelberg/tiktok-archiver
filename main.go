@@ -61,15 +61,13 @@ func downloadFile(url, filepath string) error {
 				}
 			}
 			if err == io.EOF {
-				break
+				return nil
 			}
 			if err != nil {
 				return err
 			}
 		}
 	}
-
-	return nil
 }
 
 type WriteCounter struct {
@@ -181,45 +179,45 @@ func main() {
 
 	// Download button action
 	downloadButton.OnTapped = func() {
-		filePath := inputLabel.Text
-		fileType := fileTypeSelect.Selected
-		outputDir := outputLabel.Text
-
-		// Read and parse the input file
-		links, err := readAndParseFile(filePath, fileType)
-		if err != nil {
-			dialog.ShowError(err, w)
-			return
-		}
-
-		progressBar.Min = 0
-		progressBar.Max = float64(len(links))
-
-		workerPool := make(chan struct{}, 4)
-		downloadWg.Add(len(links))
-
-		for i, link := range links {
-			filename := fmt.Sprintf("%s.mp4", strings.Replace(link.Date, ":", "-", -1))
-			filePath := filepath.Join(outputDir, filename)
-
-			workerPool <- struct{}{} // Acquire a worker from the pool
-
-			go func(i int, link VideoLink) {
-				defer func() { <-workerPool }() // Release the worker back to the pool
-
-				logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
-				err := downloadFile(link.Link, filePath)
-				if err != nil {
-					logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
-				} else {
-					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
-				}
-				progressBar.SetValue(float64(i + 1))
-				downloadWg.Done()
-			}(i, link)
-		}
-
 		go func() {
+			filePath := inputLabel.Text
+			fileType := fileTypeSelect.Selected
+			outputDir := outputLabel.Text
+
+			// Read and parse the input file
+			links, err := readAndParseFile(filePath, fileType)
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+
+			progressBar.Min = 0
+			progressBar.Max = float64(len(links))
+
+			workerPool := make(chan struct{}, 4)
+			downloadWg.Add(len(links))
+
+			for i, link := range links {
+				filename := fmt.Sprintf("%s.mp4", strings.Replace(link.Date, ":", "-", -1))
+				filePath := filepath.Join(outputDir, filename)
+
+				workerPool <- struct{}{} // Acquire a worker from the pool
+
+				go func(i int, link VideoLink) {
+					defer func() { <-workerPool }() // Release the worker back to the pool
+
+					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
+					err := downloadFile(link.Link, filePath)
+					if err != nil {
+						logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
+					} else {
+						logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
+					}
+					progressBar.SetValue(float64(i + 1))
+					downloadWg.Done()
+				}(i, link)
+			}
+
 			downloadWg.Wait()
 			logOutput.SetText(logOutput.Text + "All downloads completed.\n")
 		}()
