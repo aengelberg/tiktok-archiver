@@ -53,7 +53,7 @@ func downloadFile(url, filepath string, wc *WriteCounter) error {
 	if err != nil {
 		return err
 	}
-	wc.ProgressBar.Max = float64(contentLength)
+	wc.ContentLength = contentLength
 
 	// Write the body to file
 	_, err = io.Copy(out, io.TeeReader(resp.Body, wc))
@@ -61,14 +61,15 @@ func downloadFile(url, filepath string, wc *WriteCounter) error {
 }
 
 type WriteCounter struct {
-	Total       int64
-	ProgressBar *widget.ProgressBar
+	Total         int64
+	ContentLength int64
+	ProgressBar   *widget.ProgressBar
 }
 
 func (wc *WriteCounter) Write(p []byte) (int, error) {
 	n := len(p)
 	wc.Total += int64(n)
-	wc.ProgressBar.SetValue(float64(wc.Total) / float64(wc.ProgressBar.Max))
+	wc.ProgressBar.SetValue(float64(wc.Total) / float64(wc.ContentLength))
 	return n, nil
 }
 
@@ -144,6 +145,7 @@ func main() {
 	// Create a container to hold individual download items
 	downloadItemsContainer := container.NewVBox()
 	scrollContainer := container.NewVScroll(downloadItemsContainer)
+	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
 	content := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
