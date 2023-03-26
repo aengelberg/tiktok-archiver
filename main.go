@@ -205,7 +205,7 @@ func main() {
 			downloadWg.Add(len(links))
 
 			for i, link := range links {
-				filename := fmt.Sprintf("%s.mp4", strings.Replace(link.Date, ":", "-", -1))
+				filename := fmt.Sprintf("%s.mp4", strings.Replace(strings.Replace(link.Date, " ", "-", -1), ":", "-", -1))
 				filePath := filepath.Join(outputDir, filename)
 				// Create a DownloadItem for each file and add it to the downloadItemsContainer
 				downloadItem := &DownloadItem{
