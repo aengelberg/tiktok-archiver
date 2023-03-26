@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -32,7 +33,7 @@ type UserData struct {
 	} `json:"Video"`
 }
 
-func downloadFile(url, filepath string) error {
+func downloadFile(url, filepath string, wc *WriteCounter) error {
 	// Get the data
 	resp, err := http.Get(url)
 	if err != nil {
@@ -47,28 +48,16 @@ func downloadFile(url, filepath string) error {
 	}
 	defer out.Close()
 
-	// Write the body to file
-	buf := make([]byte, 32*1024)
-	for {
-		select {
-		case <-cancelDownload:
-			return fmt.Errorf("download cancelled")
-		default:
-			n, err := resp.Body.Read(buf)
-			if n > 0 {
-				_, err2 := out.Write(buf[:n])
-				if err2 != nil {
-					return err2
-				}
-			}
-			if err == io.EOF {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-		}
+	// Get the content length for progress calculation
+	contentLength, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	if err != nil {
+		return err
 	}
+	wc.ProgressBar.Max = float64(contentLength)
+
+	// Write the body to file
+	_, err = io.Copy(out, io.TeeReader(resp.Body, wc))
+	return err
 }
 
 type WriteCounter struct {
@@ -238,18 +227,24 @@ func main() {
 					defer func() { <-workerPool }() // Release the worker back to the pool
 
 					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
-					downloadItems[i].Status = "in progress"
-					downloadItems[i].StatusIcon.SetResource(theme.DocumentSaveIcon())
+					downloadItem := downloadItems[i]
 
-					err := downloadFile(link.Link, filePath)
+					wc := &WriteCounter{
+						ProgressBar: downloadItem.ProgressBar,
+					}
+
+					downloadItem.Status = "in progress"
+					downloadItem.StatusIcon.SetResource(theme.MediaPlayIcon())
+
+					err := downloadFile(link.Link, filePath, wc)
 					if err != nil {
 						logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
-						downloadItems[i].StatusIcon.SetResource(theme.CancelIcon())
-						downloadItems[i].Status = "failed"
+						downloadItem.StatusIcon.SetResource(theme.CancelIcon())
+						downloadItem.Status = "failed"
 					} else {
 						logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
-						downloadItems[i].StatusIcon.SetResource(theme.ConfirmIcon())
-						downloadItems[i].Status = "succeeded"
+						downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
+						downloadItem.Status = "succeeded"
 					}
 					progressBar.SetValue(float64(i + 1))
 					downloadWg.Done()
