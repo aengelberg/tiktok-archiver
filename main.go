@@ -122,6 +122,7 @@ var downloadWg sync.WaitGroup
 
 type DownloadItem struct {
 	FileName    string
+	FilePath    string
 	ProgressBar *widget.ProgressBar
 	StatusIcon  *widget.Icon
 	Status      string // "queued", "in progress", "succeeded", or "failed"
@@ -210,26 +211,31 @@ func main() {
 				// Create a DownloadItem for each file and add it to the downloadItemsContainer
 				downloadItem := &DownloadItem{
 					FileName:    filename,
+					FilePath:    filePath,
 					ProgressBar: widget.NewProgressBar(),
 					StatusIcon:  widget.NewIcon(nil), // Set the initial icon to nil
 					Status:      "queued",
 				}
-				downloadItems[i] = downloadItem
-
-				// Add the downloadItem's UI elements to the downloadItemsContainer
 				downloadItemsContainer.Add(container.NewHBox(
 					downloadItem.StatusIcon,
 					widget.NewLabel(downloadItem.FileName),
 					downloadItem.ProgressBar,
 				))
+				downloadItems[i] = downloadItem
+			}
+
+			for i, link := range links {
+				downloadItem := downloadItems[i]
+				filename := downloadItem.FileName
+				filePath := downloadItem.FilePath
 
 				workerPool <- struct{}{} // Acquire a worker from the pool
+				progressBar.SetValue(float64(i + 1))
 
 				go func(i int, link VideoLink) {
 					defer func() { <-workerPool }() // Release the worker back to the pool
 
 					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
-					downloadItem := downloadItems[i]
 
 					wc := &WriteCounter{
 						ProgressBar: downloadItem.ProgressBar,
@@ -248,7 +254,6 @@ func main() {
 						downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
 						downloadItem.Status = "succeeded"
 					}
-					progressBar.SetValue(float64(i + 1))
 					downloadWg.Done()
 				}(i, link)
 			}
