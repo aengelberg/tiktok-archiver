@@ -9,7 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
+	"fyne.io/fyne"
+	"fyne.io/fyne/storage"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -28,23 +31,42 @@ type UserData struct {
 	} `json:"Video"`
 }
 
-func downloadFile(url string, filepath string, progress *widget.ProgressBar, logOutput *widget.Entry) error {
+func downloadFile(url, filepath string) error {
+	// Get the data
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
+	// Create the file
 	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 
-	counter := &WriteCounter{ProgressBar: progress}
-	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
-	if err != nil {
-		return err
+	// Write the body to file
+	buf := make([]byte, 32*1024)
+	for {
+		select {
+		case <-cancelDownload:
+			return fmt.Errorf("download cancelled")
+		default:
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				_, err2 := out.Write(buf[:n])
+				if err2 != nil {
+					return err2
+				}
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -106,32 +128,62 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	return links, nil
 }
 
+var cancelDownload = make(chan struct{})
+var downloadWg sync.WaitGroup
+
 func main() {
 	a := app.New()
 	w := a.NewWindow("TikTok Video Downloader")
 
 	// UI elements
-	filePathInput := widget.NewEntry()
-	filePathInput.SetPlaceHolder("Path to Posts.txt or user_data.json")
+	inputButton := widget.NewButton("Select Input File", nil)
+	outputButton := widget.NewButton("Select Output Directory", nil)
+	inputLabel := widget.NewLabel("Input File:")
+	outputLabel := widget.NewLabel("Output Directory:")
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, nil)
 	downloadButton := widget.NewButton("Download", nil)
+	cancelButton := widget.NewButton("Cancel", nil)
 	progressBar := widget.NewProgressBar()
 	logOutput := widget.NewMultiLineEntry()
 
 	content := container.NewVBox(
-		filePathInput,
+		container.NewHBox(inputButton, inputLabel),
+		container.NewHBox(outputButton, outputLabel),
 		fileTypeSelect,
 		downloadButton,
+		cancelButton,
 		progressBar,
 		widget.NewLabel("Log:"),
 		logOutput,
 	)
 	w.SetContent(content)
 
+	// Input file button action
+	inputButton.OnTapped = func() {
+		fd := dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
+			if err == nil && file != nil {
+				inputLabel.SetText(file.URI().Path())
+			}
+		}, w)
+		fd.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".json"}))
+		fd.Show()
+	}
+
+	// Output directory button action
+	outputButton.OnTapped = func() {
+		fd := dialog.NewFolderOpen(func(dir fyne.ListableURI, err error) {
+			if err == nil && dir != nil {
+				outputLabel.SetText(dir.Path())
+			}
+		}, w)
+		fd.Show()
+	}
+
 	// Download button action
 	downloadButton.OnTapped = func() {
-		filePath := filePathInput.Text
+		filePath := inputLabel.Text
 		fileType := fileTypeSelect.Selected
+		outputDir := outputLabel.Text
 
 		// Read and parse the input file
 		links, err := readAndParseFile(filePath, fileType)
@@ -140,31 +192,41 @@ func main() {
 			return
 		}
 
-		// Download videos
-		downloadPath, err := os.Getwd()
-		if err != nil {
-			dialog.ShowError(err, w)
-			return
-		}
-
 		progressBar.Min = 0
 		progressBar.Max = float64(len(links))
 
+		downloadWg.Add(len(links))
+
 		for i, link := range links {
 			filename := fmt.Sprintf("%s.mp4", strings.Replace(link.Date, ":", "-", -1))
-			filePath := filepath.Join(downloadPath, filename)
+			filePath := filepath.Join(outputDir, filename)
 
-			logOutput.SetText(fmt.Sprintf("Downloading %s...\n", filename))
-			err := downloadFile(link.Link, filePath, progressBar, logOutput)
-			if err != nil {
-				logOutput.SetText(fmt.Sprintf("Failed to download %s\n", filename))
-			} else {
-				logOutput.SetText(fmt.Sprintf("Downloaded %s\n", filename))
-			}
-			progressBar.SetValue(float64(i + 1))
+			go func(i int, link VideoLink) {
+				logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
+				err := downloadFile(link.Link, filePath)
+				if err != nil {
+					logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
+				} else {
+					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
+				}
+				progressBar.SetValue(float64(i + 1))
+				downloadWg.Done()
+			}(i, link)
 		}
 
-		logOutput.SetText("Finished downloading videos.")
+		go func() {
+			downloadWg.Wait()
+			logOutput.SetText(logOutput.Text + "All downloads completed.\n")
+		}()
+	}
+
+	// Cancel button action
+	cancelButton.OnTapped = func() {
+		close(cancelDownload)
+		cancelDownload = make(chan struct{})
+		downloadWg.Wait()
+		logOutput.SetText(logOutput.Text + "Downloads cancelled.\n")
+		progressBar.SetValue(0)
 	}
 
 	w.ShowAndRun()
