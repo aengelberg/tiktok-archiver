@@ -11,12 +11,12 @@ import (
 	"strings"
 	"sync"
 
-	"fyne.io/fyne/theme"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -239,16 +239,16 @@ func main() {
 
 					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
 					downloadItems[i].Status = "in progress"
-					downloadItems[i].StatusIcon.SetResource(theme.DocumentSaveIcon)
+					downloadItems[i].StatusIcon.SetResource(theme.DocumentSaveIcon())
 
 					err := downloadFile(link.Link, filePath)
 					if err != nil {
 						logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
-						downloadItems[i].StatusIcon.SetResource(theme.CancelIcon)
+						downloadItems[i].StatusIcon.SetResource(theme.CancelIcon())
 						downloadItems[i].Status = "failed"
 					} else {
 						logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
-						downloadItems[i].StatusIcon.SetResource(theme.ConfirmIcon)
+						downloadItems[i].StatusIcon.SetResource(theme.ConfirmIcon())
 						downloadItems[i].Status = "succeeded"
 					}
 					progressBar.SetValue(float64(i + 1))
