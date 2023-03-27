@@ -120,7 +120,6 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	return links, nil
 }
 
-var cancelDownload = make(chan struct{})
 var downloadWg sync.WaitGroup
 
 type DownloadItem struct {
@@ -142,7 +141,6 @@ func main() {
 	outputLabel := widget.NewLabel("Output Directory:")
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, nil)
 	downloadButton := widget.NewButton("Download", nil)
-	cancelButton := widget.NewButton("Cancel", nil)
 	progressBar := widget.NewProgressBar()
 	logOutput := widget.NewMultiLineEntry()
 
@@ -156,7 +154,6 @@ func main() {
 		container.NewHBox(outputButton, outputLabel),
 		fileTypeSelect,
 		downloadButton,
-		cancelButton,
 		progressBar,
 		widget.NewLabel("Log:"),
 		logOutput,
@@ -264,15 +261,6 @@ func main() {
 			downloadWg.Wait()
 			logOutput.SetText(logOutput.Text + "All downloads completed.\n")
 		}()
-	}
-
-	// Cancel button action
-	cancelButton.OnTapped = func() {
-		close(cancelDownload)
-		cancelDownload = make(chan struct{})
-		downloadWg.Wait()
-		logOutput.SetText(logOutput.Text + "Downloads cancelled.\n")
-		progressBar.SetValue(0)
 	}
 
 	w.ShowAndRun()
