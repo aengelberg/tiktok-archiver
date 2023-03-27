@@ -191,6 +191,11 @@ func main() {
 		fd.Show()
 	}
 
+	// Cancel button action
+	cancelButton.OnTapped = func() {
+		close(cancelDownloads) // Signal the cancelDownloads channel to stop downloads
+	}
+
 	// Download button action
 	downloadButton.OnTapped = func() {
 		go func() {
@@ -247,18 +252,18 @@ func main() {
 				default:
 				}
 
-				if skipExistingCheckbox.Checked {
-					if _, err := os.Stat(filePath); err == nil {
-						logOutput.SetText(logOutput.Text + fmt.Sprintf("%s already exists. Skipping...\n", filename))
-						downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
-						downloadItem.Status = "succeeded"
-						downloadWg.Done()
-						continue
-					}
-				}
-
 				go func(i int, link VideoLink) {
 					defer func() { <-workerPool }() // Release the worker back to the pool
+
+					if skipExistingCheckbox.Checked {
+						if _, err := os.Stat(filePath); err == nil {
+							logOutput.SetText(logOutput.Text + fmt.Sprintf("%s already exists. Skipping...\n", filename))
+							downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
+							downloadItem.Status = "succeeded"
+							downloadWg.Done()
+							return
+						}
+					}
 
 					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
 
