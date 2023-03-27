@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,9 +35,15 @@ type UserData struct {
 	} `json:"Video"`
 }
 
-func downloadFile(url, filepath string, wc *WriteCounter) error {
+func downloadFile(ctx context.Context, url, filepath string, wc *WriteCounter) error {
+	// Create a request with context
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+
 	// Get the data
-	resp, err := http.Get(url)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -57,10 +64,26 @@ func downloadFile(url, filepath string, wc *WriteCounter) error {
 	}
 	wc.ContentLength = contentLength
 
-	// Write the body to the temporary file
-	_, err = io.Copy(out, io.TeeReader(resp.Body, wc))
-	if err != nil {
-		return err
+	// Write the body to the temporary file with context cancellation check
+	buf := make([]byte, 4096)
+	for {
+		select {
+		case <-ctx.Done():
+			_ = os.Remove(tempFilePath) // Remove the temporary file
+			return ctx.Err()
+		default:
+			n, err := resp.Body.Read(buf)
+			if err != nil && err != io.EOF {
+				return err
+			}
+			if n == 0 {
+				break
+			}
+			if _, err := out.Write(buf[:n]); err != nil {
+				return err
+			}
+			wc.Write(buf[:n])
+		}
 	}
 
 	// Rename the temporary file to the real file
@@ -141,7 +164,6 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 }
 
 var downloadWg sync.WaitGroup
-var cancelDownloads chan struct{}
 
 type DownloadItem struct {
 	FileName    string
@@ -172,8 +194,6 @@ func main() {
 	downloadItemsContainer := container.NewVBox()
 	scrollContainer := container.NewVScroll(downloadItemsContainer)
 	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
-
-	cancelDownloads = make(chan struct{})
 
 	content := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
@@ -209,11 +229,6 @@ func main() {
 			}
 		}, w)
 		fd.Show()
-	}
-
-	// Cancel button action
-	cancelButton.OnTapped = func() {
-		close(cancelDownloads) // Signal the cancelDownloads channel to stop downloads
 	}
 
 	// Download button action
@@ -257,6 +272,11 @@ func main() {
 				downloadItems[i] = downloadItem
 			}
 
+			ctx, cancel := context.WithCancel(context.Background())
+			cancelButton.OnTapped = func() {
+				cancel()
+			}
+
 			for i, link := range links {
 				downloadItem := downloadItems[i]
 				filename := downloadItem.FileName
@@ -266,7 +286,7 @@ func main() {
 				progressBar.SetValue(float64(i + 1))
 
 				select {
-				case <-cancelDownloads:
+				case <-ctx.Done():
 					logOutput.SetText(logOutput.Text + "Downloads canceled.\n")
 					return
 				default:
@@ -295,7 +315,7 @@ func main() {
 					downloadItem.Status = "in progress"
 					downloadItem.StatusIcon.SetResource(theme.MediaPlayIcon())
 
-					err := downloadFile(link.Link, filePath, wc)
+					err := downloadFile(ctx, link.Link, filePath, wc)
 					if err != nil {
 						logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
 						downloadItem.StatusIcon.SetResource(theme.CancelIcon())
