@@ -121,6 +121,7 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 }
 
 var downloadWg sync.WaitGroup
+var cancelDownloads chan struct{}
 
 type DownloadItem struct {
 	FileName    string
@@ -141,6 +142,9 @@ func main() {
 	outputLabel := widget.NewLabel("Output Directory:")
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, nil)
 	downloadButton := widget.NewButton("Download", nil)
+	cancelButton := widget.NewButton("Cancel", nil)
+	skipExistingCheckbox := widget.NewCheck("Skip already-downloaded files", nil)
+	skipExistingCheckbox.SetChecked(true)
 	progressBar := widget.NewProgressBar()
 	logOutput := widget.NewMultiLineEntry()
 
@@ -149,11 +153,15 @@ func main() {
 	scrollContainer := container.NewVScroll(downloadItemsContainer)
 	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
+	cancelDownloads = make(chan struct{})
+
 	content := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
 		container.NewHBox(outputButton, outputLabel),
 		fileTypeSelect,
+		skipExistingCheckbox,
 		downloadButton,
+		cancelButton,
 		progressBar,
 		widget.NewLabel("Log:"),
 		logOutput,
@@ -231,6 +239,23 @@ func main() {
 
 				workerPool <- struct{}{} // Acquire a worker from the pool
 				progressBar.SetValue(float64(i + 1))
+
+				select {
+				case <-cancelDownloads:
+					logOutput.SetText(logOutput.Text + "Downloads canceled.\n")
+					return
+				default:
+				}
+
+				if skipExistingCheckbox.Checked {
+					if _, err := os.Stat(filePath); err == nil {
+						logOutput.SetText(logOutput.Text + fmt.Sprintf("%s already exists. Skipping...\n", filename))
+						downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
+						downloadItem.Status = "succeeded"
+						downloadWg.Done()
+						continue
+					}
+				}
 
 				go func(i int, link VideoLink) {
 					defer func() { <-workerPool }() // Release the worker back to the pool
