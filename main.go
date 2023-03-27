@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,6 +82,12 @@ type VideoLink struct {
 	Link string
 }
 
+func sortLinksByDateDescending(links []VideoLink) {
+	sort.Slice(links, func(i, j int) bool {
+		return links[i].Date > links[j].Date
+	})
+}
+
 func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	fileContent, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -116,6 +123,8 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	default:
 		return nil, fmt.Errorf("unsupported file type")
 	}
+
+	sortLinksByDateDescending(links)
 
 	return links, nil
 }
