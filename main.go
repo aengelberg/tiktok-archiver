@@ -42,8 +42,9 @@ func downloadFile(url, filepath string, wc *WriteCounter) error {
 	}
 	defer resp.Body.Close()
 
-	// Create the file
-	out, err := os.Create(filepath)
+	// Create the temporary file
+	tempFilePath := filepath + ".temp"
+	out, err := os.Create(tempFilePath)
 	if err != nil {
 		return err
 	}
@@ -56,9 +57,19 @@ func downloadFile(url, filepath string, wc *WriteCounter) error {
 	}
 	wc.ContentLength = contentLength
 
-	// Write the body to file
+	// Write the body to the temporary file
 	_, err = io.Copy(out, io.TeeReader(resp.Body, wc))
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Rename the temporary file to the real file
+	err = os.Rename(tempFilePath, filepath)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type WriteCounter struct {
