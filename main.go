@@ -260,6 +260,7 @@ func main() {
 							logOutput.SetText(logOutput.Text + fmt.Sprintf("%s already exists. Skipping...\n", filename))
 							downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
 							downloadItem.Status = "succeeded"
+							downloadItem.ProgressBar.SetValue(1.0)
 							downloadWg.Done()
 							return
 						}
