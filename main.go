@@ -72,18 +72,18 @@ func downloadFile(ctx context.Context, url, filepath string, wc *WriteCounter) e
 			_ = os.Remove(tempFilePath) // Remove the temporary file
 			return ctx.Err()
 		default:
-			n, err := resp.Body.Read(buf)
-			if err != nil && err != io.EOF {
-				return err
-			}
-			if n == 0 {
-				break
-			}
-			if _, err := out.Write(buf[:n]); err != nil {
-				return err
-			}
-			wc.Write(buf[:n])
 		}
+		n, err := resp.Body.Read(buf)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		if _, err := out.Write(buf[:n]); err != nil {
+			return err
+		}
+		wc.Write(buf[:n])
 	}
 
 	// Rename the temporary file to the real file
