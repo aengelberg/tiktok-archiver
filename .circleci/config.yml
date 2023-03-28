@@ -15,20 +15,10 @@ jobs:
           name: Build and Release
           command: |
             set -e
-            LATEST_TAG=$(git describe --tags --abbrev=0)
-            echo "Latest tag: ${LATEST_TAG}"
-
-            # Split the tag into parts
-            VERSION_PARTS=(${LATEST_TAG//./ })
-            MAJOR="${VERSION_PARTS[0]}"
-            MINOR="${VERSION_PARTS[1]}"
-            PATCH="${VERSION_PARTS[2]}"
+            last_version=$(git describe --tags --abbrev=0)
+            echo "Latest tag: ${last_version}"
             
-            # Increment the patch version
-            PATCH=$((PATCH + 1))
-            
-            # Create a new version number
-            version="v${MAJOR}.${MINOR}.${PATCH}"
+            version=$(echo $last_version | awk -F. '/[0-9]+\./{$NF++;print}' OFS=.)
             echo "Next version: $version"
 
             GOOS=windows GOARCH=amd64 go build -o ttdl.exe main.go
