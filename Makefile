@@ -9,3 +9,5 @@ build-windows:
 
 release:
 	scripts/release.sh
+
+build-and-release: build-macos build-windows release
