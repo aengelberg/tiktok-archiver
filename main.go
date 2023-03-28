@@ -12,11 +12,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
@@ -163,8 +163,6 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	return links, nil
 }
 
-var downloadWg sync.WaitGroup
-
 type DownloadItem struct {
 	FileName    string
 	FilePath    string
@@ -173,26 +171,73 @@ type DownloadItem struct {
 	Status      string // "queued", "in progress", "succeeded", or "failed"
 }
 
+type FileState struct {
+	fileName string
+	filePath string
+	progress float64
+	status   string // "queued", "in progress", "succeeded", or "failed"
+}
+
+type AppState struct {
+	window         fyne.Window
+	cancel		   *context.CancelFunc
+	inputFile      binding.String
+	outputDir      binding.String
+	fileType       binding.String
+	skipExisting   binding.Bool
+	globalProgress binding.Float
+	fileStates     binding.UntypedList // []FileState
+}
+
 func main() {
 	a := app.New()
 	w := a.NewWindow("TikTok Video Downloader")
 
+	appState := AppState{
+		window:         w,
+		cancel:		    nil,
+		inputFile:      binding.NewString(),
+		outputDir:      binding.NewString(),
+		fileType:       binding.NewString(),
+		skipExisting:   binding.NewBool(),
+		globalProgress: binding.NewFloat(),
+		fileStates:     binding.NewUntypedList(),
+	}
+
+	createUI(appState)
+
+	w.ShowAndRun()
+}
+
+func createUI(appState AppState) {
 	// UI elements
 	inputButton := widget.NewButton("Select Input File", nil)
 	outputButton := widget.NewButton("Select Output Directory", nil)
-	inputLabel := widget.NewLabel("Input File:")
-	outputLabel := widget.NewLabel("Output Directory:")
+	inputLabel := widget.NewLabelWithData(appState.inputFile)
+	outputLabel := widget.NewLabelWithData(appState.outputDir)
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, nil)
+	appState.fileType.AddListener(binding.NewDataListener(func() {
+		fileType, _ := appState.fileType.Get()
+		fileTypeSelect.SetSelected(fileType)
+	}))
 	downloadButton := widget.NewButton("Download", nil)
 	cancelButton := widget.NewButton("Cancel", nil)
-	skipExistingCheckbox := widget.NewCheck("Skip already-downloaded files", nil)
-	skipExistingCheckbox.SetChecked(true)
-	progressBar := widget.NewProgressBar()
-	logOutput := widget.NewMultiLineEntry()
+	skipExistingCheckbox := widget.NewCheckWithData("Skip already-downloaded files", appState.skipExisting)
+	appState.skipExisting.Set(true)
+	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
 
 	// Create a container to hold individual download items
-	downloadItemsContainer := container.NewVBox()
-	scrollContainer := container.NewVScroll(downloadItemsContainer)
+	fileList := widget.NewListWithData(appState.fileStates,
+		func() fyne.CanvasObject {
+			return initFileBox()
+		},
+		func(item binding.DataItem, obj fyne.CanvasObject) {
+			fileStateObj, _ := item.(binding.Untyped).Get()
+			fileState, _ := fileStateObj.(FileState)
+			updateFileBox(obj, fileState)
+		},
+	)
+	scrollContainer := container.NewVScroll(fileList)
 	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
 	content := container.NewVBox(
@@ -203,136 +248,161 @@ func main() {
 		downloadButton,
 		cancelButton,
 		progressBar,
-		widget.NewLabel("Log:"),
-		logOutput,
 		widget.NewLabel("Individual Downloads:"),
 		scrollContainer, // Add the scroll container to the main UI
 	)
-	w.SetContent(content)
 
-	// Input file button action
 	inputButton.OnTapped = func() {
-		fd := dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
-			if err == nil && file != nil {
-				inputLabel.SetText(file.URI().Path())
-			}
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".json"}))
-		fd.Show()
+		selectInputFile(appState)
 	}
-
-	// Output directory button action
 	outputButton.OnTapped = func() {
-		fd := dialog.NewFolderOpen(func(dir fyne.ListableURI, err error) {
-			if err == nil && dir != nil {
-				outputLabel.SetText(dir.Path())
-			}
-		}, w)
-		fd.Show()
+		selectOutputDir(appState)
+	}
+	downloadButton.OnTapped = func() {
+		downloadFiles(appState)
+	}
+	cancelButton.OnTapped = func() {
+		cancelDownload(appState)
 	}
 
-	// Download button action
-	downloadButton.OnTapped = func() {
-		go func() {
-			filePath := inputLabel.Text
-			fileType := fileTypeSelect.Selected
-			outputDir := outputLabel.Text
+	appState.window.SetContent(content)
+}
 
-			// Read and parse the input file
-			links, err := readAndParseFile(filePath, fileType)
-			if err != nil {
-				dialog.ShowError(err, w)
+func selectInputFile(appState AppState) {
+	fd := dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
+		if err == nil && file != nil {
+			appState.inputFile.Set(file.URI().Path())
+		}
+	}, appState.window)
+	fd.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".json"}))
+	fd.Show()
+}
+
+func selectOutputDir(appState AppState) {
+	fd := dialog.NewFolderOpen(func(dir fyne.ListableURI, err error) {
+		if err == nil && dir != nil {
+			appState.outputDir.Set(dir.Path())
+		}
+	}, appState.window)
+	fd.Show()
+}
+
+func initFileBox() fyne.CanvasObject {
+	fileNameLabel := widget.NewLabel("")
+	statusIcon := widget.NewIcon(nil)
+	progressBar := widget.NewProgressBar()
+	fileBox := container.NewHBox(statusIcon, fileNameLabel, progressBar)
+	return fileBox
+}
+
+func updateFileBox(obj fyne.CanvasObject, fileState FileState) {
+	fileBox := obj.(*fyne.Container)
+	fileBox.Objects[0].(*widget.Icon).SetResource(getStatusIcon(fileState.status))
+	fileBox.Objects[1].(*widget.Label).SetText(fileState.fileName)
+	fileBox.Objects[2].(*widget.ProgressBar).SetValue(fileState.progress)
+}
+
+func getStatusIcon(status string) fyne.Resource {
+	switch status {
+	case "queued":
+		return theme.FileVideoIcon()
+	case "in progress":
+		return theme.DownloadIcon()
+	case "succeeded":
+		return theme.ConfirmIcon()
+	case "failed":
+		return theme.CancelIcon()
+	}
+}
+
+func downloadFiles(appState AppState) {
+	go func() {
+		filePath, _ := appState.inputFile.Get()
+		fileType, _ := appState.fileType.Get()
+		outputDir, _ := appState.outputDir.Get()
+		skipExisting, _ := appState.skipExisting.Get()
+		// Read and parse the input file
+		links, err := readAndParseFile(filePath, fileType)
+		if err != nil {
+			dialog.ShowError(err, appState.window)
+			return
+		}
+
+		fileStates := make([]FileState, len(links))
+		// workaround because fileStates isn't a valid []interface{}
+		untypedFileStates := make([]interface{}, len(links))
+
+		for i, link := range links {
+			fileName := fmt.Sprintf("%s.mp4", strings.Replace(strings.Replace(link.Date, " ", "-", -1), ":", "-", -1))
+			filePath := filepath.Join(outputDir, fileName)
+			fileStates[i] = FileState{fileName: fileName, filePath: filePath, progress: 0, status: "queued"}
+			untypedFileStates[i] = fileStates[i]
+		}
+
+		appState.fileStates.Set(untypedFileStates)
+
+		workerPool := make(chan struct{}, 4)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		appState.cancel = &cancel
+
+		for i, link := range links {
+			fileState := fileStates[i]
+			fileName := fileState.fileName
+			filePath := fileState.filePath
+
+			workerPool <- struct{}{} // Acquire a worker from the pool
+
+			appState.globalProgress.Set(float64(i) / float64(len(links)))
+
+			select {
+			case <-ctx.Done():
+				fmt.Printf("Downloads cancelled.\n")
 				return
+			default:
 			}
 
-			downloadItems := make([]*DownloadItem, len(links))
+			go func(i int) {
+				defer func() { <-workerPool }() // Release the worker back to the pool
 
-			progressBar.Min = 0
-			progressBar.Max = float64(len(links))
+				if skipExisting {
+					if _, err := os.Stat(filePath); err == nil {
+						fmt.Printf("%s already exists. Skipping...\n", fileName)
 
-			workerPool := make(chan struct{}, 4)
-			downloadWg.Add(len(links))
-
-			for i, link := range links {
-				filename := fmt.Sprintf("%s.mp4", strings.Replace(strings.Replace(link.Date, " ", "-", -1), ":", "-", -1))
-				filePath := filepath.Join(outputDir, filename)
-				// Create a DownloadItem for each file and add it to the downloadItemsContainer
-				downloadItem := &DownloadItem{
-					FileName:    filename,
-					FilePath:    filePath,
-					ProgressBar: widget.NewProgressBar(),
-					StatusIcon:  widget.NewIcon(nil), // Set the initial icon to nil
-					Status:      "queued",
-				}
-				downloadItemsContainer.Add(container.NewHBox(
-					downloadItem.StatusIcon,
-					widget.NewLabel(downloadItem.FileName),
-					downloadItem.ProgressBar,
-				))
-				downloadItems[i] = downloadItem
-			}
-
-			ctx, cancel := context.WithCancel(context.Background())
-			cancelButton.OnTapped = func() {
-				cancel()
-			}
-
-			for i, link := range links {
-				downloadItem := downloadItems[i]
-				filename := downloadItem.FileName
-				filePath := downloadItem.FilePath
-
-				workerPool <- struct{}{} // Acquire a worker from the pool
-				progressBar.SetValue(float64(i + 1))
-
-				select {
-				case <-ctx.Done():
-					logOutput.SetText(logOutput.Text + "Downloads canceled.\n")
-					return
-				default:
-				}
-
-				go func(i int, link VideoLink) {
-					defer func() { <-workerPool }() // Release the worker back to the pool
-
-					if skipExistingCheckbox.Checked {
-						if _, err := os.Stat(filePath); err == nil {
-							logOutput.SetText(logOutput.Text + fmt.Sprintf("%s already exists. Skipping...\n", filename))
-							downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
-							downloadItem.Status = "succeeded"
-							downloadItem.ProgressBar.SetValue(1.0)
-							downloadWg.Done()
-							return
-						}
-					}
-
-					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
-
-					wc := &WriteCounter{
-						ProgressBar: downloadItem.ProgressBar,
-					}
-
-					downloadItem.Status = "in progress"
-					downloadItem.StatusIcon.SetResource(theme.MediaPlayIcon())
-
-					err := downloadFile(ctx, link.Link, filePath, wc)
-					if err != nil {
-						logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
-						downloadItem.StatusIcon.SetResource(theme.CancelIcon())
-						downloadItem.Status = "failed"
-					} else {
-						logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
 						downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
 						downloadItem.Status = "succeeded"
+						downloadItem.ProgressBar.SetValue(1.0)
+						downloadWg.Done()
+						return
 					}
-					downloadWg.Done()
-				}(i, link)
-			}
+				}
 
-			downloadWg.Wait()
-			logOutput.SetText(logOutput.Text + "All downloads completed.\n")
-		}()
+				logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
+
+				wc := &WriteCounter{
+					ProgressBar: downloadItem.ProgressBar,
+				}
+
+				downloadItem.Status = "in progress"
+				downloadItem.StatusIcon.SetResource(theme.MediaPlayIcon())
+
+				err := downloadFile(ctx, link.Link, filePath, wc)
+				if err != nil {
+					logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
+					downloadItem.StatusIcon.SetResource(theme.CancelIcon())
+					downloadItem.Status = "failed"
+				} else {
+					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
+					downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
+					downloadItem.Status = "succeeded"
+				}
+				downloadWg.Done()
+			}(i, link)
+		}
 	}
 
-	w.ShowAndRun()
+	downloadWg.Wait()
+	logOutput.SetText(logOutput.Text + "All downloads completed.\n")
+}()
 }
