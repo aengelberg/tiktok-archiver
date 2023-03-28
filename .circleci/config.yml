@@ -15,7 +15,7 @@ jobs:
       - run:
           name: Build Windows binary
           command: |
-            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:2.1.0 fyne-cross windows -arch=amd64
+            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:latest fyne-cross windows -arch=amd64
 
   build-macos-amd64:
     executor: docker-executor
@@ -27,7 +27,7 @@ jobs:
       - run:
           name: Build macOS (amd64) binary
           command: |
-            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:2.1.0 fyne-cross darwin -arch=amd64
+            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:latest fyne-cross darwin -arch=amd64
 
   build-macos-arm64:
     executor: docker-executor
@@ -39,7 +39,7 @@ jobs:
       - run:
           name: Build macOS (arm64) binary
           command: |
-            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:2.1.0 fyne-cross darwin -arch=arm64
+            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:latest fyne-cross darwin -arch=arm64
 
 workflows:
   version: 2
