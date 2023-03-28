@@ -1,34 +1,50 @@
 version: 2.1
-
-orbs:
-  go: circleci/go@1.7.3
+executors:
+  docker-executor:
+    docker:
+      - image: circleci/golang:1.17
 
 jobs:
-  build:
-    executor:
-      name: go/default
-      tag: '1.20'
+  build-windows:
+    executor: docker-executor
     steps:
       - checkout
-      - go/mod-download
+      - setup_remote_docker:
+          version: 20.10.7
+          docker_layer_caching: true
       - run:
-          name: Build and Release
+          name: Build Windows binary
           command: |
-            set -e
-            last_version=$(git describe --tags --abbrev=0)
-            echo "Latest tag: ${last_version}"
-            
-            version=$(echo $last_version | awk -F. '/[0-9]+\./{$NF++;print}' OFS=.)
-            echo "Next version: $version"
+            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:2.1.0 fyne-cross windows -arch=amd64
 
-            GOOS=windows GOARCH=amd64 go build -o ttdl.exe main.go
-            zip -r ttdl-${version}-windows-amd64.zip ttdl.exe
-            GOOS=darwin GOARCH=amd64 go build -o ttdl main.go
-            go run macapp.go -assets resources/ -bin ttdl -icon resources/ttdl1024x1024.png -identifier com.aengelberg.ttdl -name TTDL -o .
-            zip -r ttdl-${version}-macos-amd64.zip TTDL.app
-            GOOS=darwin GOARCH=arm64 go build -o ttdl main.go
-            go run macapp.go -assets resources/ -bin ttdl -icon resources/ttdl1024x1024.png -identifier com.aengelberg.ttdl -name TTDL -o .
-            zip -r ttdl-${version}-macos-arm64.zip TTDL.app
+  build-macos-amd64:
+    executor: docker-executor
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.7
+          docker_layer_caching: true
+      - run:
+          name: Build macOS (amd64) binary
+          command: |
+            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:2.1.0 fyne-cross darwin -arch=amd64
 
-            echo $GH_TOKEN | gh auth login --with-token
-            gh release create $version "ttdl-${version}-windows-amd64.zip#Windows (64-bit)" "ttdl-${version}-macos-amd64.zip#macOS (Intel)" "ttdl-${version}-macos-arm64.zip#macOS (M1)" --title "TTDL $version" --notes "Release for version $version"
+  build-macos-arm64:
+    executor: docker-executor
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.7
+          docker_layer_caching: true
+      - run:
+          name: Build macOS (arm64) binary
+          command: |
+            docker run --rm -v $PWD:/app -w /app fyneio/fyne-cross:2.1.0 fyne-cross darwin -arch=arm64
+
+workflows:
+  version: 2
+  build-deploy:
+    jobs:
+      - build-windows
+      - build-macos-amd64
+      - build-macos-arm64

@@ -35,7 +35,7 @@
 // - https://el-tramo.be/blog/fancy-dmg/
 // - https://github.com/remko/fancy-dmg/blob/master/Makefile
 // - https://github.com/shurcooL/trayhost
-package main
+package macapp
 
 import (
 	"bytes"
