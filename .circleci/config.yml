@@ -1,0 +1,48 @@
+version: 2.1
+
+orbs:
+  go: circleci/go@1.7.3
+
+commands:
+  build-and-release-binary:
+    parameters:
+      binary_name:
+        type: string
+
+jobs:
+  build:
+    executor: go/default
+    steps:
+      - checkout
+      - go/mod-download
+      - run:
+          name: Build and Release
+          command: |
+            set -e
+            LATEST_TAG=$(git describe --tags --abbrev=0)
+            echo "Latest tag: ${LATEST_TAG}"
+
+            # Split the tag into parts
+            VERSION_PARTS=(${LATEST_TAG//./ })
+            MAJOR="${VERSION_PARTS[0]}"
+            MINOR="${VERSION_PARTS[1]}"
+            PATCH="${VERSION_PARTS[2]}"
+            
+            # Increment the patch version
+            PATCH=$((PATCH + 1))
+            
+            # Create a new version number
+            version="v${MAJOR}.${MINOR}.${PATCH}"
+            echo "Next version: $version"
+
+            GOOS=windows GOARCH=amd64 go build -o ttdl.exe main.go
+            zip -r ttdl-${version}-windows-amd64.zip ttdl.exe
+            GOOS=darwin GOARCH=amd64 go build -o ttdl main.go
+            go run macapp.go -assets resources/ -bin ttdl -icon resources/ttdl1024x1024.png -identifier com.aengelberg.ttdl -name TTDL -o .
+            zip -r ttdl-${version}-macos-amd64.zip TTDL.app
+            GOOS=darwin GOARCH=arm64 go build -o ttdl main.go
+            go run macapp.go -assets resources/ -bin ttdl -icon resources/ttdl1024x1024.png -identifier com.aengelberg.ttdl -name TTDL -o .
+            zip -r ttdl-${version}-macos-arm64.zip TTDL.app
+
+            echo $GH_TOKEN | gh auth login --with-token
+            gh release create $version "ttdl-${version}-windows-amd64.zip#Windows (64-bit)" "ttdl-${version}-macos-amd64.zip#macOS (Intel)" "ttdl-${version}-macos-arm64.zip#macOS (M1)" --title "TTDL $version" --notes "Release for version $version"
