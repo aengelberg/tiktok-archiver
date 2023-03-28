@@ -3,15 +3,11 @@ version: 2.1
 orbs:
   go: circleci/go@1.7.3
 
-commands:
-  build-and-release-binary:
-    parameters:
-      binary_name:
-        type: string
-
 jobs:
   build:
-    executor: go/default
+    executor:
+      name: go/default
+      tag: '1.20'
     steps:
       - checkout
       - go/mod-download
