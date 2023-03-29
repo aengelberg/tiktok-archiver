@@ -291,7 +291,7 @@ func createUI(appState appState) {
 		if outputDir == "" {
 			outputButton.SetText("Select...")
 		} else {
-			outputButton.SetText(fmt.Sprintf("%s/", filepath.Base(outputDir)))
+			outputButton.SetText(fmt.Sprintf("%s", filepath.Base(outputDir)))
 		}
 	}))
 	initialFileType, _ := appState.fileType.Get()
@@ -422,13 +422,18 @@ func newDownloadListWidget(appState appState) *widget.List {
 			statusIcon := widget.NewIcon(getStatusIcon("queued"))
 			fileNameLabel := widget.NewLabel("")
 			progressBar := widget.NewProgressBar()
-			return container.NewHBox(statusIcon, fileNameLabel, progressBar)
+			return container.New(layout.NewFormLayout(),
+				statusIcon,
+				container.New(layout.NewFormLayout(),
+					fileNameLabel, progressBar,
+				),
+			)
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
 			hbox := obj.(*fyne.Container)
 			statusIcon := hbox.Objects[0].(*widget.Icon)
-			fileNameLabel := hbox.Objects[1].(*widget.Label)
-			progressBar := hbox.Objects[2].(*widget.ProgressBar)
+			fileNameLabel := hbox.Objects[1].(*fyne.Container).Objects[0].(*widget.Label)
+			progressBar := hbox.Objects[1].(*fyne.Container).Objects[1].(*widget.ProgressBar)
 
 			download := appState.downloads.data[id]
 
@@ -446,7 +451,16 @@ func newDownloadListWidget(appState appState) *widget.List {
 func selectInputFile(appState appState) {
 	fd := dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
 		if err == nil && file != nil {
-			appState.inputFile.Set(file.URI().Path())
+			path := file.URI().Path()
+			appState.inputFile.Set(path)
+			if filepath.Base(path) == "Posts.txt" {
+				logger.Printf("Automatically setting file type to Posts.txt")
+				appState.fileType.Set("Posts.txt")
+			}
+			if filepath.Base(path) == "user_data.json" {
+				logger.Printf("Automatically setting file type to user_data.json")
+				appState.fileType.Set("user_data.json")
+			}
 		}
 	}, appState.window)
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".json"}))
