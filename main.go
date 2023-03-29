@@ -196,13 +196,10 @@ func main() {
 	w := a.NewWindow("TikTok Video Downloader")
 
 	appState := appState{
-		window:    w,
-		inputFile: binding.BindPreferenceString("inputFile", a.Preferences()),
-		outputDir: binding.BindPreferenceString("outputDir", a.Preferences()),
-		fileType:  binding.BindPreferenceString("fileType", a.Preferences()),
-		//inputFile:      binding.NewString(),
-		//outputDir:      binding.NewString(),
-		//fileType:       binding.NewString(),
+		window:         w,
+		inputFile:      binding.BindPreferenceString("inputFile", a.Preferences()),
+		outputDir:      binding.BindPreferenceString("outputDir", a.Preferences()),
+		fileType:       binding.BindPreferenceString("fileType", a.Preferences()),
 		skipExisting:   binding.NewBool(),
 		globalProgress: binding.NewFloat(),
 		downloads: &downloadState{
