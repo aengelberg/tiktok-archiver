@@ -180,15 +180,18 @@ type appState struct {
 }
 
 func main() {
-	a := app.New()
+	a := app.NewWithID("com.aengelberg.ttdl")
 	w := a.NewWindow("TikTok Video Downloader")
 
 	appState := appState{
-		window:         w,
-		cancel:         nil,
-		inputFile:      binding.NewString(),
-		outputDir:      binding.NewString(),
-		fileType:       binding.NewString(),
+		window:    w,
+		cancel:    nil,
+		inputFile: binding.BindPreferenceString("inputFile", a.Preferences()),
+		outputDir: binding.BindPreferenceString("outputDir", a.Preferences()),
+		fileType:  binding.BindPreferenceString("fileType", a.Preferences()),
+		//inputFile:      binding.NewString(),
+		//outputDir:      binding.NewString(),
+		//fileType:       binding.NewString(),
 		skipExisting:   binding.NewBool(),
 		globalProgress: binding.NewFloat(),
 		files:          binding.NewUntypedList(),
@@ -205,13 +208,11 @@ func createUI(appState appState) {
 	outputButton := widget.NewButton("Select Output Directory", nil)
 	inputLabel := widget.NewLabelWithData(appState.inputFile)
 	outputLabel := widget.NewLabelWithData(appState.outputDir)
+	initialFileType, _ := appState.fileType.Get()
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, func(fileType string) {
 		appState.fileType.Set(fileType)
 	})
-	appState.fileType.AddListener(binding.NewDataListener(func() {
-		fileType, _ := appState.fileType.Get()
-		fileTypeSelect.SetSelected(fileType)
-	}))
+	fileTypeSelect.SetSelected(initialFileType)
 	downloadButton := widget.NewButton("Download", nil)
 	cancelButton := widget.NewButton("Cancel", nil)
 	skipExistingCheckbox := widget.NewCheckWithData("Skip already-downloaded files", appState.skipExisting)
@@ -354,6 +355,7 @@ func downloadFiles(appState appState) {
 
 		workerPool := make(chan struct{}, 4)
 		downloadWg := sync.WaitGroup{}
+		downloadWg.Add(len(links))
 
 		ctx, cancel := context.WithCancel(context.Background())
 
