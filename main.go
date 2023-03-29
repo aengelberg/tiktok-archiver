@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image/color"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -135,9 +134,10 @@ func sortLinksByDateDescending(links []VideoLink) {
 }
 
 func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
-	fileContent, err := ioutil.ReadFile(filePath)
+	logger.Printf("Reading file %s as %s", filePath, fileType)
+	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %v", err)
+		return nil, fmt.Errorf("Failed to read file: %v", err)
 	}
 
 	var links []VideoLink
@@ -167,7 +167,11 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 			links = append(links, VideoLink{Date: video.Date, Link: video.Link})
 		}
 	default:
-		return nil, fmt.Errorf("unsupported file type")
+		return nil, fmt.Errorf("You must select a file type.")
+	}
+
+	if len(links) == 0 {
+		return nil, fmt.Errorf("No links found in the file. Is the file type correct?")
 	}
 
 	sortLinksByDateDescending(links)
@@ -216,7 +220,7 @@ func main() {
 
 	newLogger, err := createLogger()
 	if err != nil {
-		logger.Printf("Failed to create logger: %v", err)
+		logger.Printf("Failed to create logger: %v\n", err)
 	} else {
 		logger = newLogger
 	}
@@ -276,7 +280,6 @@ func createLogger() (*log.Logger, error) {
 func createUI(appState appState) {
 	// UI elements
 	inputButton := widget.NewButton("Select...", nil)
-	inputButton.MinSize()
 	appState.inputFile.AddListener(binding.NewDataListener(func() {
 		inputFile, _ := appState.inputFile.Get()
 		if inputFile == "" {
@@ -329,7 +332,7 @@ func createUI(appState appState) {
 	downloadList := newDownloadListWidget(appState)
 	appState.downloads.widget = downloadList
 	scrollContainer := container.NewVScroll(downloadList)
-	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
+	// scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
 	errorTracker := canvas.NewText("", color.RGBA{R: 255, A: 255})
 	appState.errors.AddListener(binding.NewDataListener(func() {
@@ -397,6 +400,7 @@ func createUI(appState appState) {
 	)
 
 	content := container.NewHSplit(leftSide, rightSide)
+	content.SetOffset(0.4)
 
 	inputButton.OnTapped = func() {
 		selectInputFile(appState)
@@ -411,6 +415,7 @@ func createUI(appState appState) {
 		cancelDownloads(appState)
 	}
 	appState.window.SetContent(content)
+	appState.window.Resize(fyne.NewSize(800, 500))
 }
 
 func newDownloadListWidget(appState appState) *widget.List {
@@ -519,7 +524,9 @@ func downloadFiles(appState appState) {
 		// Read and parse the input file
 		links, err := readAndParseFile(inputFilePath, fileType)
 		if err != nil {
+			logger.Printf("Error reading and parsing file: %v", err)
 			dialog.ShowError(err, appState.window)
+			appState.isDownloading.Set(false)
 			return
 		}
 
