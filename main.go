@@ -162,13 +162,13 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	return links, nil
 }
 
-type FileState struct {
-	FileName string
-	Progress float64
-	Status   string // "queued", "in progress", "succeeded", or "failed"
+type fileState struct {
+	name     binding.String
+	progress binding.Float
+	status   binding.String // "queued", "in progress", "succeeded", or "failed"
 }
 
-type AppState struct {
+type appState struct {
 	window         fyne.Window
 	cancel         *context.CancelFunc
 	inputFile      binding.String
@@ -176,14 +176,14 @@ type AppState struct {
 	fileType       binding.String
 	skipExisting   binding.Bool
 	globalProgress binding.Float
-	fileStates     binding.UntypedList // each element is a binding.DataMap that mirrors FileState
+	files          binding.UntypedList // []file
 }
 
 func main() {
 	a := app.New()
 	w := a.NewWindow("TikTok Video Downloader")
 
-	appState := AppState{
+	appState := appState{
 		window:         w,
 		cancel:         nil,
 		inputFile:      binding.NewString(),
@@ -191,7 +191,7 @@ func main() {
 		fileType:       binding.NewString(),
 		skipExisting:   binding.NewBool(),
 		globalProgress: binding.NewFloat(),
-		fileStates:     binding.NewUntypedList(),
+		files:          binding.NewUntypedList(),
 	}
 
 	createUI(appState)
@@ -199,7 +199,7 @@ func main() {
 	w.ShowAndRun()
 }
 
-func createUI(appState AppState) {
+func createUI(appState appState) {
 	// UI elements
 	inputButton := widget.NewButton("Select Input File", nil)
 	outputButton := widget.NewButton("Select Output Directory", nil)
@@ -247,12 +247,11 @@ func createUI(appState AppState) {
 	cancelButton.OnTapped = func() {
 		cancelDownloads(appState)
 	}
-
 	appState.window.SetContent(content)
 }
 
-func newFileListWidget(appState AppState) fyne.Widget {
-	return widget.NewListWithData(appState.fileStates,
+func newFileListWidget(appState appState) fyne.Widget {
+	return widget.NewListWithData(appState.files,
 		func() fyne.CanvasObject {
 			fileNameLabel := widget.NewLabel("")
 			statusIcon := widget.NewIcon(nil)
@@ -262,21 +261,17 @@ func newFileListWidget(appState AppState) fyne.Widget {
 		func(item binding.DataItem, obj fyne.CanvasObject) {
 			hbox := obj.(*fyne.Container)
 			hbox.RemoveAll()
-			dataMap := item.(binding.DataMap)
-			fileNameObj, _ := dataMap.GetItem("FileName")
-			fileNameState := fileNameObj.(binding.String)
-			progressObj, _ := dataMap.GetItem("Progress")
-			progressState := progressObj.(binding.Float)
-			statusObj, _ := dataMap.GetItem("Status")
-			statusState := statusObj.(binding.String)
+			dataItem, _ := item.(binding.Untyped)
+			data, _ := dataItem.Get()
+			file := data.(fileState)
 
 			icon := widget.NewIcon(nil)
-			statusState.AddListener(binding.NewDataListener(func() {
-				status, _ := statusState.Get()
+			file.status.AddListener(binding.NewDataListener(func() {
+				status, _ := file.status.Get()
 				icon.SetResource(getStatusIcon(status))
 			}))
-			label := widget.NewLabelWithData(fileNameState)
-			progressBar := widget.NewProgressBarWithData(progressState)
+			label := widget.NewLabelWithData(file.name)
+			progressBar := widget.NewProgressBarWithData(file.progress)
 			hbox.Add(icon)
 			hbox.Add(label)
 			hbox.Add(progressBar)
@@ -284,7 +279,7 @@ func newFileListWidget(appState AppState) fyne.Widget {
 	)
 }
 
-func selectInputFile(appState AppState) {
+func selectInputFile(appState appState) {
 	fd := dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
 		if err == nil && file != nil {
 			appState.inputFile.Set(file.URI().Path())
@@ -294,7 +289,7 @@ func selectInputFile(appState AppState) {
 	fd.Show()
 }
 
-func selectOutputDir(appState AppState) {
+func selectOutputDir(appState appState) {
 	fd := dialog.NewFolderOpen(func(dir fyne.ListableURI, err error) {
 		if err == nil && dir != nil {
 			appState.outputDir.Set(dir.Path())
@@ -317,47 +312,45 @@ func getStatusIcon(status string) fyne.Resource {
 	return nil
 }
 
-func downloadFiles(appState AppState) {
+func downloadFiles(appState appState) {
 	go func() {
-		filePath, _ := appState.inputFile.Get()
+		inputFilePath, _ := appState.inputFile.Get()
 		fileType, _ := appState.fileType.Get()
 		outputDir, _ := appState.outputDir.Get()
 		skipExisting, _ := appState.skipExisting.Get()
 		// Read and parse the input file
-		links, err := readAndParseFile(filePath, fileType)
+		links, err := readAndParseFile(inputFilePath, fileType)
 		if err != nil {
 			dialog.ShowError(err, appState.window)
 			return
 		}
 
 		type downloadableFile struct {
-			state    binding.DataMap
-			path     string
-			name     string
-			status   binding.String
-			progress binding.Float
+			fileState
+			path string
+			name string
 		}
 
 		downloadableFiles := make([]downloadableFile, len(links))
-		dataMaps := make([]interface{}, len(links))
+		dataVals := make([]interface{}, len(links))
 
 		for i, link := range links {
 			fileName := fmt.Sprintf("%s.mp4", strings.Replace(strings.Replace(link.Date, " ", "-", -1), ":", "-", -1))
 			filePath := filepath.Join(outputDir, fileName)
-			stateMap := binding.BindStruct(FileState{FileName: fileName, Progress: 0, Status: "queued"})
-			statusObj, _ := stateMap.GetItem("Status")
-			progressObj, _ := stateMap.GetItem("Progress")
-			dataMaps[i] = stateMap
+			file := fileState{
+				name:     binding.NewString(),
+				status:   binding.NewString(),
+				progress: binding.NewFloat(),
+			}
+			dataVals[i] = file
 			downloadableFiles[i] = downloadableFile{
-				state:    stateMap,
-				name:     fileName,
-				path:     filePath,
-				status:   statusObj.(binding.String),
-				progress: progressObj.(binding.Float),
+				fileState: file,
+				name:      fileName,
+				path:      filePath,
 			}
 		}
 
-		appState.fileStates.Set(dataMaps)
+		appState.files.Set(dataVals)
 
 		workerPool := make(chan struct{}, 4)
 		downloadWg := sync.WaitGroup{}
@@ -416,7 +409,7 @@ func downloadFiles(appState AppState) {
 	}()
 }
 
-func cancelDownloads(appState AppState) {
+func cancelDownloads(appState appState) {
 	if appState.cancel != nil {
 		(*appState.cancel)()
 	}
