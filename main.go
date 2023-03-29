@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -170,13 +171,18 @@ type fileState struct {
 
 type appState struct {
 	window         fyne.Window
-	cancel         *context.CancelFunc
 	inputFile      binding.String
 	outputDir      binding.String
 	fileType       binding.String
 	skipExisting   binding.Bool
 	globalProgress binding.Float
 	files          binding.UntypedList // []file
+
+	isDownloading binding.Bool
+	cancelHook    *atomic.Value
+	// Lock for the state transition between "not downloading" and "downloading". When this is locked, `cancelHook`
+	// and `isDownloading` are being updated at the same time.
+	lock sync.Mutex
 }
 
 func main() {
@@ -185,7 +191,6 @@ func main() {
 
 	appState := appState{
 		window:    w,
-		cancel:    nil,
 		inputFile: binding.BindPreferenceString("inputFile", a.Preferences()),
 		outputDir: binding.BindPreferenceString("outputDir", a.Preferences()),
 		fileType:  binding.BindPreferenceString("fileType", a.Preferences()),
@@ -195,6 +200,10 @@ func main() {
 		skipExisting:   binding.NewBool(),
 		globalProgress: binding.NewFloat(),
 		files:          binding.NewUntypedList(),
+
+		isDownloading: binding.NewBool(),
+		cancelHook:    &atomic.Value{},
+		lock:          sync.Mutex{},
 	}
 
 	createUI(appState)
@@ -215,6 +224,16 @@ func createUI(appState appState) {
 	fileTypeSelect.SetSelected(initialFileType)
 	downloadButton := widget.NewButton("Download", nil)
 	cancelButton := widget.NewButton("Cancel", nil)
+	appState.isDownloading.AddListener(binding.NewDataListener(func() {
+		isDownloading, _ := appState.isDownloading.Get()
+		if isDownloading {
+			downloadButton.Disable()
+			cancelButton.Enable()
+		} else {
+			downloadButton.Enable()
+			cancelButton.Disable()
+		}
+	}))
 	skipExistingCheckbox := widget.NewCheckWithData("Skip already-downloaded files", appState.skipExisting)
 	appState.skipExisting.Set(true)
 	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
@@ -254,7 +273,6 @@ func createUI(appState appState) {
 func newFileListWidget(appState appState) fyne.Widget {
 	return widget.NewListWithData(appState.files,
 		func() fyne.CanvasObject {
-			fmt.Printf("Creating file item\n")
 			statusIcon := widget.NewIcon(getStatusIcon("queued"))
 			fileNameLabel := widget.NewLabel("")
 			progressBar := widget.NewProgressBar()
@@ -314,6 +332,14 @@ func getStatusIcon(status string) fyne.Resource {
 }
 
 func downloadFiles(appState appState) {
+	appState.lock.Lock()
+	defer appState.lock.Unlock()
+	if isDownloading, _ := appState.isDownloading.Get(); isDownloading {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	appState.cancelHook.Swap(cancel)
+	appState.isDownloading.Set(true)
 	go func() {
 		inputFilePath, _ := appState.inputFile.Get()
 		fileType, _ := appState.fileType.Get()
@@ -358,10 +384,6 @@ func downloadFiles(appState appState) {
 		workerPool := make(chan struct{}, 4)
 		downloadWg := sync.WaitGroup{}
 		downloadWg.Add(len(links))
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		appState.cancel = &cancel
 
 		for i, link := range links {
 			file := downloadableFiles[i]
@@ -409,11 +431,23 @@ func downloadFiles(appState appState) {
 		}
 		downloadWg.Wait()
 		fmt.Printf("All downloads completed.\n")
+		appState.lock.Lock()
+		defer appState.lock.Unlock()
+		if isDownloading, _ := appState.isDownloading.Get(); !isDownloading {
+			return
+		}
+		appState.isDownloading.Set(false)
 	}()
 }
 
 func cancelDownloads(appState appState) {
-	if appState.cancel != nil {
-		(*appState.cancel)()
+	appState.lock.Lock()
+	defer appState.lock.Unlock()
+	if isDownloading, _ := appState.isDownloading.Get(); !isDownloading {
+		return
 	}
+	if cancel := appState.cancelHook.Load(); cancel != nil {
+		cancel.(context.CancelFunc)()
+	}
+	appState.isDownloading.Set(false)
 }
