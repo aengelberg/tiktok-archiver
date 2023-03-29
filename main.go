@@ -254,28 +254,28 @@ func createUI(appState appState) {
 func newFileListWidget(appState appState) fyne.Widget {
 	return widget.NewListWithData(appState.files,
 		func() fyne.CanvasObject {
+			fmt.Printf("Creating file item\n")
+			statusIcon := widget.NewIcon(getStatusIcon("queued"))
 			fileNameLabel := widget.NewLabel("")
-			statusIcon := widget.NewIcon(nil)
 			progressBar := widget.NewProgressBar()
 			return container.NewHBox(statusIcon, fileNameLabel, progressBar)
 		},
 		func(item binding.DataItem, obj fyne.CanvasObject) {
 			hbox := obj.(*fyne.Container)
-			hbox.RemoveAll()
+			statusIcon := hbox.Objects[0].(*widget.Icon)
+			fileNameLabel := hbox.Objects[1].(*widget.Label)
+			progressBar := hbox.Objects[2].(*widget.ProgressBar)
+
 			dataItem, _ := item.(binding.Untyped)
 			data, _ := dataItem.Get()
 			file := data.(fileState)
 
-			icon := widget.NewIcon(nil)
 			file.status.AddListener(binding.NewDataListener(func() {
 				status, _ := file.status.Get()
-				icon.SetResource(getStatusIcon(status))
+				statusIcon.SetResource(getStatusIcon(status))
 			}))
-			label := widget.NewLabelWithData(file.name)
-			progressBar := widget.NewProgressBarWithData(file.progress)
-			hbox.Add(icon)
-			hbox.Add(label)
-			hbox.Add(progressBar)
+			fileNameLabel.Bind(file.name)
+			progressBar.Bind(file.progress)
 		},
 	)
 }
@@ -343,6 +343,8 @@ func downloadFiles(appState appState) {
 				status:   binding.NewString(),
 				progress: binding.NewFloat(),
 			}
+			file.status.Set("queued")
+			file.name.Set(fileName)
 			dataVals[i] = file
 			downloadableFiles[i] = downloadableFile{
 				fileState: file,
@@ -384,7 +386,7 @@ func downloadFiles(appState appState) {
 				if skipExisting {
 					if _, err := os.Stat(filePath); err == nil {
 						fmt.Printf("%s already exists. Skipping...\n", fileName)
-						file.status.Set("skipped")
+						file.status.Set("succeeded")
 						file.progress.Set(1.0)
 						return
 					}
@@ -403,7 +405,6 @@ func downloadFiles(appState appState) {
 					fmt.Printf("Downloaded %s successfully.\n", fileName)
 					file.status.Set("succeeded")
 				}
-				downloadWg.Done()
 			}(i)
 		}
 		downloadWg.Wait()
