@@ -100,6 +100,7 @@ func downloadFile(ctx context.Context, url, filepath string, wc *WriteCounter) e
 	}
 
 	// Rename the temporary file to the real file
+	out.Close()
 	err = os.Rename(tempFilePath, filepath)
 	if err != nil {
 		return err
