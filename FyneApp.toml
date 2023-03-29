@@ -1,0 +1,6 @@
+Website = "https://github.com/aengelberg/ttdl"
+
+[Details]
+Icon = "resources/ttdl1024x1024.png"
+Name = "TTDL"
+ID = "com.aengelberg.ttdl"
