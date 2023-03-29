@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -25,6 +27,10 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+)
+
+var (
+	logger = log.New(os.Stdout, "", log.LstdFlags)
 )
 
 type UserData struct {
@@ -204,6 +210,13 @@ func main() {
 	a := app.NewWithID("com.aengelberg.tiktok-archiver")
 	w := a.NewWindow("TikTok Archiver")
 
+	newLogger, err := createLogger()
+	if err != nil {
+		logger.Printf("Failed to create logger: %v", err)
+	} else {
+		logger = newLogger
+	}
+
 	appState := appState{
 		window:       w,
 		inputFile:    binding.BindPreferenceString("inputFile", a.Preferences()),
@@ -230,6 +243,27 @@ func main() {
 	createUI(appState)
 
 	w.ShowAndRun()
+}
+
+func createLogger() (*log.Logger, error) {
+	// Generate the filename for the log file.
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return nil, err
+	}
+	filename := filepath.Join(configDir, "TikTok Archiver", "log", fmt.Sprintf("log-%s.txt", time.Now().Format("2006-01-02-15-04-05")))
+	logger.Printf("Logging to %s", filename)
+	err = os.MkdirAll(filepath.Dir(filename), 0777)
+	if err != nil {
+		return nil, err
+	}
+	// Open the log file for writing. Create it if it doesn't exist.
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, err
+	}
+	newLogger := log.New(io.MultiWriter(file, os.Stdout), "", log.Ldate|log.Ltime)
+	return newLogger, nil
 }
 
 func createUI(appState appState) {
@@ -497,7 +531,7 @@ func downloadFiles(appState appState) {
 
 			select {
 			case <-ctx.Done():
-				fmt.Printf("Downloads cancelled.\n")
+				logger.Printf("Downloads cancelled.\n")
 				return
 			default:
 			}
@@ -510,7 +544,7 @@ func downloadFiles(appState appState) {
 
 				if skipExisting {
 					if _, err := os.Stat(filePath); err == nil {
-						fmt.Printf("%s already exists. Skipping...\n", fileName)
+						logger.Printf("%s already exists. Skipping...\n", fileName)
 						file.status.Set("succeeded")
 						file.progress.Set(1.0)
 						inc(appState.completed)
@@ -519,7 +553,7 @@ func downloadFiles(appState appState) {
 					}
 				}
 
-				fmt.Printf("Downloading %s...\n", fileName)
+				logger.Printf("Downloading %s...\n", fileName)
 				wc := &WriteCounter{
 					ProgressState: file.progress,
 				}
@@ -527,23 +561,23 @@ func downloadFiles(appState appState) {
 				err := downloadFile(ctx, link.Link, filePath, wc)
 				if err != nil {
 					if err == context.Canceled {
-						fmt.Printf("Download of %s cancelled.\n", fileName)
+						logger.Printf("Download of %s cancelled.\n", fileName)
 						file.status.Set("cancelled")
 						return
 					}
-					fmt.Printf("Failed to download %s: %v\n", fileName, err)
+					logger.Printf("Failed to download %s: %v\n", fileName, err)
 					file.status.Set("failed")
 					inc(appState.completed)
 					inc(appState.errors)
 				} else {
-					fmt.Printf("Downloaded %s successfully.\n", fileName)
+					logger.Printf("Downloaded %s successfully.\n", fileName)
 					file.status.Set("succeeded")
 					inc(appState.completed)
 				}
 			}(i)
 		}
 		downloadWg.Wait()
-		fmt.Printf("All downloads completed.\n")
+		logger.Printf("All downloads completed.\n")
 		appState.globalProgress.Set(1.0)
 		appState.lock.Lock()
 		defer appState.lock.Unlock()
