@@ -177,12 +177,17 @@ type downloadState struct {
 }
 
 type appState struct {
-	window         fyne.Window
-	inputFile      binding.String
-	outputDir      binding.String
-	fileType       binding.String
-	skipExisting   binding.Bool
+	window       fyne.Window
+	inputFile    binding.String
+	outputDir    binding.String
+	fileType     binding.String
+	skipExisting binding.Bool
+
+	completed      binding.Int
+	errors         binding.Int
+	total          binding.Int
 	globalProgress binding.Float
+
 	// Mutable state, to work around the limitations of Fyne's data binding.
 	downloads *downloadState
 
@@ -198,11 +203,15 @@ func main() {
 	w := a.NewWindow("TikTok Video Downloader")
 
 	appState := appState{
-		window:         w,
-		inputFile:      binding.BindPreferenceString("inputFile", a.Preferences()),
-		outputDir:      binding.BindPreferenceString("outputDir", a.Preferences()),
-		fileType:       binding.BindPreferenceString("fileType", a.Preferences()),
-		skipExisting:   binding.NewBool(),
+		window:       w,
+		inputFile:    binding.BindPreferenceString("inputFile", a.Preferences()),
+		outputDir:    binding.BindPreferenceString("outputDir", a.Preferences()),
+		fileType:     binding.BindPreferenceString("fileType", a.Preferences()),
+		skipExisting: binding.NewBool(),
+
+		completed:      binding.NewInt(),
+		errors:         binding.NewInt(),
+		total:          binding.NewInt(),
 		globalProgress: binding.NewFloat(),
 		downloads: &downloadState{
 			data:   []download{},
@@ -252,6 +261,16 @@ func createUI(appState appState) {
 	scrollContainer := container.NewVScroll(downloadList)
 	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
+	errorTracker := canvas.NewText("", color.RGBA{R: 255, A: 255})
+	appState.errors.AddListener(binding.NewDataListener(func() {
+		errors, _ := appState.errors.Get()
+		if errors > 0 {
+			errorTracker.Text = fmt.Sprintf("(%d errors)", errors)
+		} else {
+			errorTracker.Text = ""
+		}
+	}))
+
 	leftSide := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
 		container.NewHBox(outputButton, outputLabel),
@@ -263,6 +282,13 @@ func createUI(appState appState) {
 
 	rightSide := container.NewBorder(
 		container.NewVBox(
+			container.NewHBox(
+				widget.NewLabel("Completed:"),
+				widget.NewLabelWithData(binding.IntToString(appState.completed)),
+				widget.NewLabel("/"),
+				widget.NewLabelWithData(binding.IntToString(appState.total)),
+				errorTracker,
+			),
 			progressBar,
 			widget.NewLabel("Individual Downloads:"),
 		),
@@ -351,9 +377,19 @@ func getStatusIcon(status string) fyne.Resource {
 	case "succeeded":
 		return theme.ConfirmIcon()
 	case "failed":
-		return theme.CancelIcon()
+		return theme.ErrorIcon()
 	}
 	return nil
+}
+
+// Quick and dirty serialization for incrementing counters
+var incLock sync.Mutex
+
+func inc(intState binding.Int) {
+	incLock.Lock()
+	defer incLock.Unlock()
+	val, _ := intState.Get()
+	intState.Set(val + 1)
 }
 
 func downloadFiles(appState appState) {
@@ -376,6 +412,10 @@ func downloadFiles(appState appState) {
 			dialog.ShowError(err, appState.window)
 			return
 		}
+
+		appState.completed.Set(0)
+		appState.errors.Set(0)
+		appState.total.Set(len(links))
 
 		type downloadableFile struct {
 			download
@@ -432,6 +472,7 @@ func downloadFiles(appState appState) {
 				link := links[i]
 				defer func() { <-workerPool }() // Release the worker back to the pool
 				defer downloadWg.Done()
+				defer inc(appState.completed)
 
 				if skipExisting {
 					if _, err := os.Stat(filePath); err == nil {
@@ -451,6 +492,7 @@ func downloadFiles(appState appState) {
 				if err != nil {
 					fmt.Printf("Failed to download %s: %v\n", fileName, err)
 					file.status.Set("failed")
+					inc(appState.errors)
 				} else {
 					fmt.Printf("Downloaded %s successfully.\n", fileName)
 					file.status.Set("succeeded")
