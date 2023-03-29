@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
@@ -250,16 +252,31 @@ func createUI(appState appState) {
 	scrollContainer := container.NewVScroll(downloadList)
 	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
-	content := container.NewVBox(
+	leftSide := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
 		container.NewHBox(outputButton, outputLabel),
 		fileTypeSelect,
 		skipExistingCheckbox,
 		downloadButton,
 		cancelButton,
-		progressBar,
-		widget.NewLabel("Individual Downloads:"),
-		scrollContainer, // Add the scroll container to the main UI
+	)
+
+	rightSide := container.NewBorder(
+		container.NewVBox(
+			progressBar,
+			widget.NewLabel("Individual Downloads:"),
+		),
+		nil, nil, nil,
+		scrollContainer,
+	)
+
+	content := container.NewBorder(
+		nil, nil, nil,
+		container.NewHBox(
+			canvas.NewLine(color.White),
+			rightSide,
+		),
+		leftSide,
 	)
 
 	inputButton.OnTapped = func() {
