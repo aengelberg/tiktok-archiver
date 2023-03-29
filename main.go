@@ -169,6 +169,11 @@ type download struct {
 	status   binding.String // "queued", "in progress", "succeeded", or "failed"
 }
 
+type downloadState struct {
+	data   []download
+	widget *widget.List
+}
+
 type appState struct {
 	window         fyne.Window
 	inputFile      binding.String
@@ -176,7 +181,8 @@ type appState struct {
 	fileType       binding.String
 	skipExisting   binding.Bool
 	globalProgress binding.Float
-	downloads      binding.UntypedList // []download
+	// Mutable state, to work around the limitations of Fyne's data binding.
+	downloads *downloadState
 
 	isDownloading binding.Bool
 	cancelHook    *atomic.Value
@@ -199,7 +205,10 @@ func main() {
 		//fileType:       binding.NewString(),
 		skipExisting:   binding.NewBool(),
 		globalProgress: binding.NewFloat(),
-		downloads:      binding.NewUntypedList(),
+		downloads: &downloadState{
+			data:   []download{},
+			widget: nil,
+		},
 
 		isDownloading: binding.NewBool(),
 		cancelHook:    &atomic.Value{},
@@ -239,8 +248,9 @@ func createUI(appState appState) {
 	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
 
 	// Create a container to hold individual download items
-	fileList := newFileListWidget(appState)
-	scrollContainer := container.NewVScroll(fileList)
+	downloadList := newDownloadListWidget(appState)
+	appState.downloads.widget = downloadList
+	scrollContainer := container.NewVScroll(downloadList)
 	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
 	content := container.NewVBox(
@@ -270,30 +280,31 @@ func createUI(appState appState) {
 	appState.window.SetContent(content)
 }
 
-func newFileListWidget(appState appState) fyne.Widget {
-	return widget.NewListWithData(appState.downloads,
+func newDownloadListWidget(appState appState) *widget.List {
+	return widget.NewList(
+		func() int {
+			return len(appState.downloads.data)
+		},
 		func() fyne.CanvasObject {
 			statusIcon := widget.NewIcon(getStatusIcon("queued"))
 			fileNameLabel := widget.NewLabel("")
 			progressBar := widget.NewProgressBar()
 			return container.NewHBox(statusIcon, fileNameLabel, progressBar)
 		},
-		func(item binding.DataItem, obj fyne.CanvasObject) {
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
 			hbox := obj.(*fyne.Container)
 			statusIcon := hbox.Objects[0].(*widget.Icon)
 			fileNameLabel := hbox.Objects[1].(*widget.Label)
 			progressBar := hbox.Objects[2].(*widget.ProgressBar)
 
-			dataItem, _ := item.(binding.Untyped)
-			data, _ := dataItem.Get()
-			file := data.(download)
+			download := appState.downloads.data[id]
 
-			file.status.AddListener(binding.NewDataListener(func() {
-				status, _ := file.status.Get()
+			download.status.AddListener(binding.NewDataListener(func() {
+				status, _ := download.status.Get()
 				statusIcon.SetResource(getStatusIcon(status))
 			}))
-			fileNameLabel.Bind(file.name)
-			progressBar.Bind(file.progress)
+			fileNameLabel.Bind(download.name)
+			progressBar.Bind(download.progress)
 		},
 	)
 }
@@ -358,8 +369,8 @@ func downloadFiles(appState appState) {
 			name string
 		}
 
+		initialDownloads := make([]download, len(links))
 		downloadableFiles := make([]downloadableFile, len(links))
-		dataVals := make([]interface{}, len(links))
 
 		for i, link := range links {
 			fileName := fmt.Sprintf("%s.mp4", strings.Replace(strings.Replace(link.Date, " ", "-", -1), ":", "-", -1))
@@ -371,7 +382,7 @@ func downloadFiles(appState appState) {
 			}
 			file.status.Set("queued")
 			file.name.Set(fileName)
-			dataVals[i] = file
+			initialDownloads[i] = file
 			downloadableFiles[i] = downloadableFile{
 				download: file,
 				name:     fileName,
@@ -379,7 +390,8 @@ func downloadFiles(appState appState) {
 			}
 		}
 
-		appState.downloads.Set(dataVals)
+		appState.downloads.data = initialDownloads
+		appState.downloads.widget.Refresh()
 
 		workerPool := make(chan struct{}, 4)
 		downloadWg := sync.WaitGroup{}
