@@ -182,6 +182,7 @@ type appState struct {
 	outputDir    binding.String
 	fileType     binding.String
 	skipExisting binding.Bool
+	parallelism  binding.Float
 
 	completed      binding.Int
 	errors         binding.Int
@@ -208,7 +209,8 @@ func main() {
 		inputFile:    binding.BindPreferenceString("inputFile", a.Preferences()),
 		outputDir:    binding.BindPreferenceString("outputDir", a.Preferences()),
 		fileType:     binding.BindPreferenceString("fileType", a.Preferences()),
-		skipExisting: binding.BindPreferenceBool("skipExisting", a.Preferences()),
+		skipExisting: binding.NewBool(),
+		parallelism:  binding.BindPreferenceFloat("parallelism", a.Preferences()),
 
 		completed:      binding.NewInt(),
 		errors:         binding.NewInt(),
@@ -241,6 +243,10 @@ func createUI(appState appState) {
 		appState.fileType.Set(fileType)
 	})
 	fileTypeSelect.SetSelected(initialFileType)
+	parallelismSlider := widget.NewSliderWithData(1, 8, appState.parallelism)
+	if initialParallelism, _ := appState.parallelism.Get(); initialParallelism == 0 {
+		appState.parallelism.Set(8)
+	}
 	downloadButton := widget.NewButton("Download", nil)
 	cancelButton := widget.NewButton("Cancel", nil)
 	appState.isDownloading.AddListener(binding.NewDataListener(func() {
@@ -286,10 +292,21 @@ func createUI(appState appState) {
 	leftSide := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
 		container.NewHBox(outputButton, outputLabel),
-		fileTypeSelect,
-		skipExistingCheckbox,
+		container.NewHBox(widget.NewLabel("File type:"), fileTypeSelect),
 		downloadButton,
 		cancelButton,
+		widget.NewAccordion(
+			widget.NewAccordionItem("Advanced Options",
+				container.NewVBox(
+					skipExistingCheckbox,
+					container.NewBorder(nil, nil, widget.NewLabel("Parallelism:"), nil,
+						container.NewBorder(
+							nil, nil, widget.NewLabel("1"), widget.NewLabel("16"),
+							parallelismSlider,
+						)),
+				),
+			),
+		),
 	)
 
 	rightSide := container.NewBorder(
@@ -464,7 +481,8 @@ func downloadFiles(appState appState) {
 		appState.downloads.data = initialDownloads
 		appState.downloads.widget.Refresh()
 
-		workerPool := make(chan struct{}, 4)
+		parallelismFloat, _ := appState.parallelism.Get()
+		workerPool := make(chan struct{}, int64(parallelismFloat))
 		downloadWg := sync.WaitGroup{}
 		downloadWg.Add(len(links))
 
@@ -526,6 +544,7 @@ func downloadFiles(appState appState) {
 		}
 		downloadWg.Wait()
 		fmt.Printf("All downloads completed.\n")
+		appState.globalProgress.Set(1.0)
 		appState.lock.Lock()
 		defer appState.lock.Unlock()
 		if isDownloading, _ := appState.isDownloading.Get(); !isDownloading {
