@@ -253,7 +253,7 @@ func createUI(appState appState) {
 			cancelButton.Disable()
 		}
 	}))
-	skipExistingCheckbox := widget.NewCheckWithData("Skip already-downloaded files", appState.skipExisting)
+	skipExistingCheckbox := widget.NewCheckWithData("Skip already-downloaded videos", appState.skipExisting)
 	appState.skipExisting.Set(true)
 	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
 
@@ -392,6 +392,8 @@ func getStatusIcon(status string) fyne.Resource {
 		return theme.ConfirmIcon()
 	case "failed":
 		return theme.ErrorIcon()
+	case "cancelled":
+		return theme.CancelIcon()
 	}
 	return nil
 }
@@ -487,13 +489,13 @@ func downloadFiles(appState appState) {
 				link := links[i]
 				defer func() { <-workerPool }() // Release the worker back to the pool
 				defer downloadWg.Done()
-				defer inc(appState.completed)
 
 				if skipExisting {
 					if _, err := os.Stat(filePath); err == nil {
 						fmt.Printf("%s already exists. Skipping...\n", fileName)
 						file.status.Set("succeeded")
 						file.progress.Set(1.0)
+						inc(appState.completed)
 						inc(appState.skipped)
 						return
 					}
@@ -506,12 +508,19 @@ func downloadFiles(appState appState) {
 				file.status.Set("in progress")
 				err := downloadFile(ctx, link.Link, filePath, wc)
 				if err != nil {
+					if err == context.Canceled {
+						fmt.Printf("Download of %s cancelled.\n", fileName)
+						file.status.Set("cancelled")
+						return
+					}
 					fmt.Printf("Failed to download %s: %v\n", fileName, err)
 					file.status.Set("failed")
+					inc(appState.completed)
 					inc(appState.errors)
 				} else {
 					fmt.Printf("Downloaded %s successfully.\n", fileName)
 					file.status.Set("succeeded")
+					inc(appState.completed)
 				}
 			}(i)
 		}
