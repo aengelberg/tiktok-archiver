@@ -2,7 +2,10 @@ module github.com/aengelberg/tiktok-archiver
 
 go 1.20
 
-require fyne.io/fyne/v2 v2.3.3
+require (
+	fyne.io/fyne/v2 v2.3.3
+	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
+)
 
 require (
 	fyne.io/systray v1.10.1-0.20230312215936-7f71b037e260 // indirect

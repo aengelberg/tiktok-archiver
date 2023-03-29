@@ -27,10 +27,13 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/skratchdot/open-golang/open"
 )
 
 var (
-	logger = log.New(os.Stdout, "", log.LstdFlags)
+	logger      = log.New(os.Stdout, "", log.LstdFlags)
+	logFilePath string
 )
 
 type UserData struct {
@@ -217,6 +220,8 @@ func main() {
 		logger = newLogger
 	}
 
+	logger.Printf("Starting TikTok Archiver\n")
+
 	appState := appState{
 		window:       w,
 		inputFile:    binding.BindPreferenceString("inputFile", a.Preferences()),
@@ -251,17 +256,18 @@ func createLogger() (*log.Logger, error) {
 	if err != nil {
 		return nil, err
 	}
-	filename := filepath.Join(configDir, "TikTok Archiver", "log", fmt.Sprintf("log-%s.txt", time.Now().Format("2006-01-02-15-04-05")))
-	logger.Printf("Logging to %s", filename)
-	err = os.MkdirAll(filepath.Dir(filename), 0777)
+	path := filepath.Join(configDir, "TikTok Archiver", "log", fmt.Sprintf("log-%s.txt", time.Now().Format("2006-01-02-15-04-05")))
+	logger.Printf("Logging to %s", path)
+	err = os.MkdirAll(filepath.Dir(path), 0777)
 	if err != nil {
 		return nil, err
 	}
 	// Open the log file for writing. Create it if it doesn't exist.
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return nil, err
 	}
+	logFilePath = path
 	newLogger := log.New(io.MultiWriter(file, os.Stdout), "", log.Ldate|log.Ltime)
 	return newLogger, nil
 }
@@ -282,7 +288,13 @@ func createUI(appState appState) {
 		appState.parallelism.Set(8)
 	}
 	downloadButton := widget.NewButton("Download", nil)
+	downloadButton.SetIcon(theme.DownloadIcon())
 	cancelButton := widget.NewButton("Cancel", nil)
+	cancelButton.SetIcon(theme.CancelIcon())
+	logButton := widget.NewButton("Open Log", func() {
+		openLog()
+	})
+	logButton.SetIcon(theme.DocumentIcon())
 	appState.isDownloading.AddListener(binding.NewDataListener(func() {
 		isDownloading, _ := appState.isDownloading.Get()
 		if isDownloading {
@@ -323,21 +335,27 @@ func createUI(appState appState) {
 		}
 	}))
 
-	leftSide := container.NewVBox(
-		container.NewHBox(inputButton, inputLabel),
-		container.NewHBox(outputButton, outputLabel),
-		container.NewHBox(widget.NewLabel("File type:"), fileTypeSelect),
-		downloadButton,
-		cancelButton,
-		widget.NewAccordion(
-			widget.NewAccordionItem("Advanced Options",
-				container.NewVBox(
-					skipExistingCheckbox,
-					container.NewBorder(nil, nil, widget.NewLabel("Parallelism:"), nil,
-						container.NewBorder(
-							nil, nil, widget.NewLabel("1"), widget.NewLabel("16"),
-							parallelismSlider,
-						)),
+	leftSide := container.NewBorder(
+		nil, container.NewVBox(
+			downloadButton,
+			container.NewGridWithColumns(2, cancelButton, logButton),
+		),
+		nil, nil,
+		container.NewVBox(
+			container.NewHBox(inputButton, inputLabel),
+			container.NewHBox(outputButton, outputLabel),
+			container.NewHBox(widget.NewLabel("File type:"), fileTypeSelect),
+			widget.NewAccordion(
+				widget.NewAccordionItem("Advanced Options",
+					container.NewVBox(
+						skipExistingCheckbox,
+						container.NewBorder(nil, nil, widget.NewLabel("Parallelism:"), nil,
+							container.NewBorder(
+								nil, nil, widget.NewLabel("1"), widget.NewLabel("16"),
+								parallelismSlider,
+							),
+						),
+					),
 				),
 			),
 		),
@@ -360,14 +378,7 @@ func createUI(appState appState) {
 		scrollContainer,
 	)
 
-	content := container.NewBorder(
-		nil, nil, nil,
-		container.NewHBox(
-			canvas.NewLine(color.White),
-			rightSide,
-		),
-		leftSide,
-	)
+	content := container.NewHSplit(leftSide, rightSide)
 
 	inputButton.OnTapped = func() {
 		selectInputFile(appState)
@@ -598,4 +609,11 @@ func cancelDownloads(appState appState) {
 		cancel.(context.CancelFunc)()
 	}
 	appState.isDownloading.Set(false)
+}
+
+func openLog() {
+	if logFilePath == "" {
+		return
+	}
+	open.Start(logFilePath)
 }
