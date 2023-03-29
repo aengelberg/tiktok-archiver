@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -98,16 +99,14 @@ func downloadFile(ctx context.Context, url, filepath string, wc *WriteCounter) e
 type WriteCounter struct {
 	Total         int64
 	ContentLength int64
-	ProgressBar   *widget.ProgressBar
+	ProgressState binding.Float
 }
 
 func (wc *WriteCounter) Write(p []byte) (int, error) {
 	n := len(p)
 	wc.Total += int64(n)
 	floatValue := float64(wc.Total) / float64(wc.ContentLength)
-	if floatValue-wc.ProgressBar.Value > 0.01 || wc.Total == wc.ContentLength {
-		wc.ProgressBar.SetValue(floatValue)
-	}
+	wc.ProgressState.Set(floatValue)
 	return n, nil
 }
 
@@ -163,30 +162,21 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	return links, nil
 }
 
-type DownloadItem struct {
-	FileName    string
-	FilePath    string
-	ProgressBar *widget.ProgressBar
-	StatusIcon  *widget.Icon
-	Status      string // "queued", "in progress", "succeeded", or "failed"
-}
-
 type FileState struct {
-	fileName string
-	filePath string
-	progress float64
-	status   string // "queued", "in progress", "succeeded", or "failed"
+	FileName string
+	Progress float64
+	Status   string // "queued", "in progress", "succeeded", or "failed"
 }
 
 type AppState struct {
 	window         fyne.Window
-	cancel		   *context.CancelFunc
+	cancel         *context.CancelFunc
 	inputFile      binding.String
 	outputDir      binding.String
 	fileType       binding.String
 	skipExisting   binding.Bool
 	globalProgress binding.Float
-	fileStates     binding.UntypedList // []FileState
+	fileStates     binding.UntypedList // each element is a binding.DataMap that mirrors FileState
 }
 
 func main() {
@@ -195,7 +185,7 @@ func main() {
 
 	appState := AppState{
 		window:         w,
-		cancel:		    nil,
+		cancel:         nil,
 		inputFile:      binding.NewString(),
 		outputDir:      binding.NewString(),
 		fileType:       binding.NewString(),
@@ -215,7 +205,9 @@ func createUI(appState AppState) {
 	outputButton := widget.NewButton("Select Output Directory", nil)
 	inputLabel := widget.NewLabelWithData(appState.inputFile)
 	outputLabel := widget.NewLabelWithData(appState.outputDir)
-	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, nil)
+	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, func(fileType string) {
+		appState.fileType.Set(fileType)
+	})
 	appState.fileType.AddListener(binding.NewDataListener(func() {
 		fileType, _ := appState.fileType.Get()
 		fileTypeSelect.SetSelected(fileType)
@@ -227,16 +219,7 @@ func createUI(appState AppState) {
 	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
 
 	// Create a container to hold individual download items
-	fileList := widget.NewListWithData(appState.fileStates,
-		func() fyne.CanvasObject {
-			return initFileBox()
-		},
-		func(item binding.DataItem, obj fyne.CanvasObject) {
-			fileStateObj, _ := item.(binding.Untyped).Get()
-			fileState, _ := fileStateObj.(FileState)
-			updateFileBox(obj, fileState)
-		},
-	)
+	fileList := newFileListWidget(appState)
 	scrollContainer := container.NewVScroll(fileList)
 	scrollContainer.SetMinSize(fyne.NewSize(400, 400))
 
@@ -262,10 +245,43 @@ func createUI(appState AppState) {
 		downloadFiles(appState)
 	}
 	cancelButton.OnTapped = func() {
-		cancelDownload(appState)
+		cancelDownloads(appState)
 	}
 
 	appState.window.SetContent(content)
+}
+
+func newFileListWidget(appState AppState) fyne.Widget {
+	return widget.NewListWithData(appState.fileStates,
+		func() fyne.CanvasObject {
+			fileNameLabel := widget.NewLabel("")
+			statusIcon := widget.NewIcon(nil)
+			progressBar := widget.NewProgressBar()
+			return container.NewHBox(statusIcon, fileNameLabel, progressBar)
+		},
+		func(item binding.DataItem, obj fyne.CanvasObject) {
+			hbox := obj.(*fyne.Container)
+			hbox.RemoveAll()
+			dataMap := item.(binding.DataMap)
+			fileNameObj, _ := dataMap.GetItem("FileName")
+			fileNameState := fileNameObj.(binding.String)
+			progressObj, _ := dataMap.GetItem("Progress")
+			progressState := progressObj.(binding.Float)
+			statusObj, _ := dataMap.GetItem("Status")
+			statusState := statusObj.(binding.String)
+
+			icon := widget.NewIcon(nil)
+			statusState.AddListener(binding.NewDataListener(func() {
+				status, _ := statusState.Get()
+				icon.SetResource(getStatusIcon(status))
+			}))
+			label := widget.NewLabelWithData(fileNameState)
+			progressBar := widget.NewProgressBarWithData(progressState)
+			hbox.Add(icon)
+			hbox.Add(label)
+			hbox.Add(progressBar)
+		},
+	)
 }
 
 func selectInputFile(appState AppState) {
@@ -287,21 +303,6 @@ func selectOutputDir(appState AppState) {
 	fd.Show()
 }
 
-func initFileBox() fyne.CanvasObject {
-	fileNameLabel := widget.NewLabel("")
-	statusIcon := widget.NewIcon(nil)
-	progressBar := widget.NewProgressBar()
-	fileBox := container.NewHBox(statusIcon, fileNameLabel, progressBar)
-	return fileBox
-}
-
-func updateFileBox(obj fyne.CanvasObject, fileState FileState) {
-	fileBox := obj.(*fyne.Container)
-	fileBox.Objects[0].(*widget.Icon).SetResource(getStatusIcon(fileState.status))
-	fileBox.Objects[1].(*widget.Label).SetText(fileState.fileName)
-	fileBox.Objects[2].(*widget.ProgressBar).SetValue(fileState.progress)
-}
-
 func getStatusIcon(status string) fyne.Resource {
 	switch status {
 	case "queued":
@@ -313,6 +314,7 @@ func getStatusIcon(status string) fyne.Resource {
 	case "failed":
 		return theme.CancelIcon()
 	}
+	return nil
 }
 
 func downloadFiles(appState AppState) {
@@ -328,29 +330,46 @@ func downloadFiles(appState AppState) {
 			return
 		}
 
-		fileStates := make([]FileState, len(links))
-		// workaround because fileStates isn't a valid []interface{}
-		untypedFileStates := make([]interface{}, len(links))
+		type downloadableFile struct {
+			state    binding.DataMap
+			path     string
+			name     string
+			status   binding.String
+			progress binding.Float
+		}
+
+		downloadableFiles := make([]downloadableFile, len(links))
+		dataMaps := make([]interface{}, len(links))
 
 		for i, link := range links {
 			fileName := fmt.Sprintf("%s.mp4", strings.Replace(strings.Replace(link.Date, " ", "-", -1), ":", "-", -1))
 			filePath := filepath.Join(outputDir, fileName)
-			fileStates[i] = FileState{fileName: fileName, filePath: filePath, progress: 0, status: "queued"}
-			untypedFileStates[i] = fileStates[i]
+			stateMap := binding.BindStruct(FileState{FileName: fileName, Progress: 0, Status: "queued"})
+			statusObj, _ := stateMap.GetItem("Status")
+			progressObj, _ := stateMap.GetItem("Progress")
+			dataMaps[i] = stateMap
+			downloadableFiles[i] = downloadableFile{
+				state:    stateMap,
+				name:     fileName,
+				path:     filePath,
+				status:   statusObj.(binding.String),
+				progress: progressObj.(binding.Float),
+			}
 		}
 
-		appState.fileStates.Set(untypedFileStates)
+		appState.fileStates.Set(dataMaps)
 
 		workerPool := make(chan struct{}, 4)
+		downloadWg := sync.WaitGroup{}
 
 		ctx, cancel := context.WithCancel(context.Background())
 
 		appState.cancel = &cancel
 
 		for i, link := range links {
-			fileState := fileStates[i]
-			fileName := fileState.fileName
-			filePath := fileState.filePath
+			file := downloadableFiles[i]
+			filePath := file.path
+			fileName := file.name
 
 			workerPool <- struct{}{} // Acquire a worker from the pool
 
@@ -365,44 +384,40 @@ func downloadFiles(appState AppState) {
 
 			go func(i int) {
 				defer func() { <-workerPool }() // Release the worker back to the pool
+				defer downloadWg.Done()
 
 				if skipExisting {
 					if _, err := os.Stat(filePath); err == nil {
 						fmt.Printf("%s already exists. Skipping...\n", fileName)
-
-						downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
-						downloadItem.Status = "succeeded"
-						downloadItem.ProgressBar.SetValue(1.0)
-						downloadWg.Done()
+						file.status.Set("skipped")
+						file.progress.Set(1.0)
 						return
 					}
 				}
 
-				logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloading %s...\n", filename))
-
+				fmt.Printf("Downloading %s...\n", fileName)
 				wc := &WriteCounter{
-					ProgressBar: downloadItem.ProgressBar,
+					ProgressState: file.progress,
 				}
-
-				downloadItem.Status = "in progress"
-				downloadItem.StatusIcon.SetResource(theme.MediaPlayIcon())
-
+				file.status.Set("in progress")
 				err := downloadFile(ctx, link.Link, filePath, wc)
 				if err != nil {
-					logOutput.SetText(logOutput.Text + fmt.Sprintf("Failed to download %s: %v\n", filename, err))
-					downloadItem.StatusIcon.SetResource(theme.CancelIcon())
-					downloadItem.Status = "failed"
+					fmt.Printf("Failed to download %s: %v\n", fileName, err)
+					file.status.Set("failed")
 				} else {
-					logOutput.SetText(logOutput.Text + fmt.Sprintf("Downloaded %s successfully.\n", filename))
-					downloadItem.StatusIcon.SetResource(theme.ConfirmIcon())
-					downloadItem.Status = "succeeded"
+					fmt.Printf("Downloaded %s successfully.\n", fileName)
+					file.status.Set("succeeded")
 				}
 				downloadWg.Done()
-			}(i, link)
+			}(i)
 		}
-	}
+		downloadWg.Wait()
+		fmt.Printf("All downloads completed.\n")
+	}()
+}
 
-	downloadWg.Wait()
-	logOutput.SetText(logOutput.Text + "All downloads completed.\n")
-}()
+func cancelDownloads(appState AppState) {
+	if appState.cancel != nil {
+		(*appState.cancel)()
+	}
 }
