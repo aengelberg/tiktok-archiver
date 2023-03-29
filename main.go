@@ -185,6 +185,7 @@ type appState struct {
 
 	completed      binding.Int
 	errors         binding.Int
+	skipped        binding.Int
 	total          binding.Int
 	globalProgress binding.Float
 
@@ -207,10 +208,11 @@ func main() {
 		inputFile:    binding.BindPreferenceString("inputFile", a.Preferences()),
 		outputDir:    binding.BindPreferenceString("outputDir", a.Preferences()),
 		fileType:     binding.BindPreferenceString("fileType", a.Preferences()),
-		skipExisting: binding.NewBool(),
+		skipExisting: binding.BindPreferenceBool("skipExisting", a.Preferences()),
 
 		completed:      binding.NewInt(),
 		errors:         binding.NewInt(),
+		skipped:        binding.NewInt(),
 		total:          binding.NewInt(),
 		globalProgress: binding.NewFloat(),
 		downloads: &downloadState{
@@ -271,6 +273,16 @@ func createUI(appState appState) {
 		}
 	}))
 
+	skipTracker := canvas.NewText("", color.RGBA{R: 102, G: 153, B: 204, A: 255})
+	appState.skipped.AddListener(binding.NewDataListener(func() {
+		skipped, _ := appState.skipped.Get()
+		if skipped > 0 {
+			skipTracker.Text = fmt.Sprintf("(%d skipped)", skipped)
+		} else {
+			skipTracker.Text = ""
+		}
+	}))
+
 	leftSide := container.NewVBox(
 		container.NewHBox(inputButton, inputLabel),
 		container.NewHBox(outputButton, outputLabel),
@@ -288,6 +300,7 @@ func createUI(appState appState) {
 				widget.NewLabel("/"),
 				widget.NewLabelWithData(binding.IntToString(appState.total)),
 				errorTracker,
+				skipTracker,
 			),
 			progressBar,
 			widget.NewLabel("Individual Downloads:"),
@@ -342,6 +355,7 @@ func newDownloadListWidget(appState appState) *widget.List {
 			download.status.AddListener(binding.NewDataListener(func() {
 				status, _ := download.status.Get()
 				statusIcon.SetResource(getStatusIcon(status))
+
 			}))
 			fileNameLabel.Bind(download.name)
 			progressBar.Bind(download.progress)
@@ -415,6 +429,7 @@ func downloadFiles(appState appState) {
 
 		appState.completed.Set(0)
 		appState.errors.Set(0)
+		appState.skipped.Set(0)
 		appState.total.Set(len(links))
 
 		type downloadableFile struct {
@@ -479,6 +494,7 @@ func downloadFiles(appState appState) {
 						fmt.Printf("%s already exists. Skipping...\n", fileName)
 						file.status.Set("succeeded")
 						file.progress.Set(1.0)
+						inc(appState.skipped)
 						return
 					}
 				}
