@@ -385,7 +385,7 @@ func downloadFiles(appState appState) {
 		downloadWg := sync.WaitGroup{}
 		downloadWg.Add(len(links))
 
-		for i, link := range links {
+		for i, _ := range links {
 			file := downloadableFiles[i]
 			filePath := file.path
 			fileName := file.name
@@ -402,6 +402,8 @@ func downloadFiles(appState appState) {
 			}
 
 			go func(i int) {
+				file := downloadableFiles[i]
+				link := links[i]
 				defer func() { <-workerPool }() // Release the worker back to the pool
 				defer downloadWg.Done()
 
