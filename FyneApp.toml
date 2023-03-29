@@ -1,6 +1,7 @@
 Website = "https://github.com/aengelberg/tiktok-archiver"
 
 [Details]
-Icon = "resources/ttdl1024x1024.png"
-Name = "TikTok Archiver"
-ID = "com.aengelberg.tiktok-archiver"
+  Icon = "resources/icon1024.png"
+  Name = "TikTok Archiver"
+  ID = "com.aengelberg.tiktok-archiver"
+  Build = 20

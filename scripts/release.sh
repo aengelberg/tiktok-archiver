@@ -2,7 +2,7 @@
 set -eo pipefail
 
 git pull --tags
-last_version=$(git describe --tags --abbrev=0)
+last_version=$(git tag --sort=committerdate | tail -1)
 echo "Latest tag: ${last_version}"
 version=$(echo $last_version | awk -F. '/[0-9]+\./{$NF++;print}' OFS=.)
 echo "Next version: $version"
