@@ -201,8 +201,8 @@ type appState struct {
 }
 
 func main() {
-	a := app.NewWithID("com.aengelberg.ttdl")
-	w := a.NewWindow("TikTok Video Downloader")
+	a := app.NewWithID("com.aengelberg.tiktok-archiver")
+	w := a.NewWindow("TikTok Archiver")
 
 	appState := appState{
 		window:       w,

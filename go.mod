@@ -1,4 +1,4 @@
-module github.com/aengelberg/ttdl
+module github.com/aengelberg/tiktok-archiver
 
 go 1.20
 

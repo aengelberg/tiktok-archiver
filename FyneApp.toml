@@ -1,6 +1,6 @@
-Website = "https://github.com/aengelberg/ttdl"
+Website = "https://github.com/aengelberg/tiktok-archiver"
 
 [Details]
 Icon = "resources/ttdl1024x1024.png"
-Name = "TTDL"
-ID = "com.aengelberg.ttdl"
+Name = "TikTok Archiver"
+ID = "com.aengelberg.tiktok-archiver"
