@@ -24,6 +24,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -274,10 +275,25 @@ func createLogger() (*log.Logger, error) {
 
 func createUI(appState appState) {
 	// UI elements
-	inputButton := widget.NewButton("Select Input File", nil)
-	outputButton := widget.NewButton("Select Output Directory", nil)
-	inputLabel := widget.NewLabelWithData(appState.inputFile)
-	outputLabel := widget.NewLabelWithData(appState.outputDir)
+	inputButton := widget.NewButton("Select...", nil)
+	inputButton.MinSize()
+	appState.inputFile.AddListener(binding.NewDataListener(func() {
+		inputFile, _ := appState.inputFile.Get()
+		if inputFile == "" {
+			inputButton.SetText("Select...")
+		} else {
+			inputButton.SetText(filepath.Base(inputFile))
+		}
+	}))
+	outputButton := widget.NewButton("Select...", nil)
+	appState.outputDir.AddListener(binding.NewDataListener(func() {
+		outputDir, _ := appState.outputDir.Get()
+		if outputDir == "" {
+			outputButton.SetText("Select...")
+		} else {
+			outputButton.SetText(fmt.Sprintf("%s/", filepath.Base(outputDir)))
+		}
+	}))
 	initialFileType, _ := appState.fileType.Get()
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, func(fileType string) {
 		appState.fileType.Set(fileType)
@@ -342,9 +358,11 @@ func createUI(appState appState) {
 		),
 		nil, nil,
 		container.NewVBox(
-			container.NewHBox(inputButton, inputLabel),
-			container.NewHBox(outputButton, outputLabel),
-			container.NewHBox(widget.NewLabel("File type:"), fileTypeSelect),
+			container.New(layout.NewFormLayout(),
+				widget.NewLabel("Input file:"), inputButton,
+				widget.NewLabel("File type:"), fileTypeSelect,
+				widget.NewLabel("Output directory:"), outputButton,
+			),
 			widget.NewAccordion(
 				widget.NewAccordionItem("Advanced Options",
 					container.NewVBox(
