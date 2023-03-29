@@ -163,7 +163,7 @@ func readAndParseFile(filePath string, fileType string) ([]VideoLink, error) {
 	return links, nil
 }
 
-type fileState struct {
+type download struct {
 	name     binding.String
 	progress binding.Float
 	status   binding.String // "queued", "in progress", "succeeded", or "failed"
@@ -176,7 +176,7 @@ type appState struct {
 	fileType       binding.String
 	skipExisting   binding.Bool
 	globalProgress binding.Float
-	files          binding.UntypedList // []file
+	downloads      binding.UntypedList // []download
 
 	isDownloading binding.Bool
 	cancelHook    *atomic.Value
@@ -199,7 +199,7 @@ func main() {
 		//fileType:       binding.NewString(),
 		skipExisting:   binding.NewBool(),
 		globalProgress: binding.NewFloat(),
-		files:          binding.NewUntypedList(),
+		downloads:      binding.NewUntypedList(),
 
 		isDownloading: binding.NewBool(),
 		cancelHook:    &atomic.Value{},
@@ -271,7 +271,7 @@ func createUI(appState appState) {
 }
 
 func newFileListWidget(appState appState) fyne.Widget {
-	return widget.NewListWithData(appState.files,
+	return widget.NewListWithData(appState.downloads,
 		func() fyne.CanvasObject {
 			statusIcon := widget.NewIcon(getStatusIcon("queued"))
 			fileNameLabel := widget.NewLabel("")
@@ -286,7 +286,7 @@ func newFileListWidget(appState appState) fyne.Widget {
 
 			dataItem, _ := item.(binding.Untyped)
 			data, _ := dataItem.Get()
-			file := data.(fileState)
+			file := data.(download)
 
 			file.status.AddListener(binding.NewDataListener(func() {
 				status, _ := file.status.Get()
@@ -353,7 +353,7 @@ func downloadFiles(appState appState) {
 		}
 
 		type downloadableFile struct {
-			fileState
+			download
 			path string
 			name string
 		}
@@ -364,7 +364,7 @@ func downloadFiles(appState appState) {
 		for i, link := range links {
 			fileName := fmt.Sprintf("%s.mp4", strings.Replace(strings.Replace(link.Date, " ", "-", -1), ":", "-", -1))
 			filePath := filepath.Join(outputDir, fileName)
-			file := fileState{
+			file := download{
 				name:     binding.NewString(),
 				status:   binding.NewString(),
 				progress: binding.NewFloat(),
@@ -373,13 +373,13 @@ func downloadFiles(appState appState) {
 			file.name.Set(fileName)
 			dataVals[i] = file
 			downloadableFiles[i] = downloadableFile{
-				fileState: file,
-				name:      fileName,
-				path:      filePath,
+				download: file,
+				name:     fileName,
+				path:     filePath,
 			}
 		}
 
-		appState.files.Set(dataVals)
+		appState.downloads.Set(dataVals)
 
 		workerPool := make(chan struct{}, 4)
 		downloadWg := sync.WaitGroup{}
