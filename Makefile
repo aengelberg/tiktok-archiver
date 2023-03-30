@@ -11,3 +11,5 @@ release:
 	scripts/release.sh
 
 build-and-release: build-macos build-windows release
+
+.PHONY: build-macos build-windows release build-and-release
