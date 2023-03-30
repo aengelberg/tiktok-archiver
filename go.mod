@@ -4,6 +4,8 @@ go 1.20
 
 require (
 	fyne.io/fyne/v2 v2.3.3
+	github.com/dustin/go-humanize v1.0.1
+	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 )
 

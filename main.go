@@ -27,6 +27,8 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/dustin/go-humanize"
+	"github.com/mxk/go-flowrate/flowrate"
 	"github.com/ncruces/zenity"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -113,6 +115,7 @@ type WriteCounter struct {
 	Total         int64
 	ContentLength int64
 	ProgressState binding.Float
+	Monitor       *flowrate.Monitor
 }
 
 func (wc *WriteCounter) Write(p []byte) (int, error) {
@@ -120,6 +123,7 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 	wc.Total += int64(n)
 	floatValue := float64(wc.Total) / float64(wc.ContentLength)
 	wc.ProgressState.Set(floatValue)
+	wc.Monitor.Update(n)
 	return n, nil
 }
 
@@ -204,6 +208,7 @@ type appState struct {
 	skipped        binding.Int
 	total          binding.Int
 	globalProgress binding.Float
+	bytesPerSecond binding.Int
 
 	// Mutable state, to work around the limitations of Fyne's data binding.
 	downloads *downloadState
@@ -241,6 +246,7 @@ func main() {
 		skipped:        binding.NewInt(),
 		total:          binding.NewInt(),
 		globalProgress: binding.NewFloat(),
+		bytesPerSecond: binding.NewInt(),
 		downloads: &downloadState{
 			data:   []download{},
 			widget: nil,
@@ -405,6 +411,12 @@ func createUI(appState appState) {
 		}
 	}))
 
+	dataSpeed := widget.NewLabel("")
+	appState.bytesPerSecond.AddListener(binding.NewDataListener(func() {
+		bps, _ := appState.bytesPerSecond.Get()
+		dataSpeed.SetText(humanize.Bytes(uint64(bps)) + "/s")
+	}))
+
 	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
 
 	downloadList := newDownloadListWidget(appState)
@@ -422,7 +434,7 @@ func createUI(appState appState) {
 				skipTracker,
 			),
 			progressBar,
-			widget.NewLabel("Individual Downloads:"),
+			dataSpeed,
 		),
 		nil, nil, nil,
 		scrollContainer,
@@ -598,6 +610,19 @@ func downloadFiles(appState appState) {
 		downloadWg := sync.WaitGroup{}
 		downloadWg.Add(len(links))
 
+		monitor := flowrate.New(0, 0)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Second):
+					appState.bytesPerSecond.Set(int(monitor.Status().CurRate))
+				}
+			}
+		}()
+		defer cancel()
+
 		for i, _ := range links {
 			file := downloadableFiles[i]
 			filePath := file.path
@@ -634,6 +659,7 @@ func downloadFiles(appState appState) {
 				logger.Printf("Downloading %s...\n", fileName)
 				wc := &WriteCounter{
 					ProgressState: file.progress,
+					Monitor:       monitor,
 				}
 				file.status.Set("in progress")
 				err := downloadFile(ctx, link.Link, filePath, wc)
