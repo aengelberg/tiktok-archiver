@@ -471,7 +471,7 @@ func newDownloadListWidget(appState appState) *widget.List {
 }
 
 func selectInputFile(appState appState) {
-	file, err := zenity.SelectFile(
+	path, err := zenity.SelectFile(
 		zenity.Title("Select TikTok video archive file"),
 		zenity.FileFilters{
 			{"JSON files", []string{"*.json"}, false},
@@ -484,7 +484,15 @@ func selectInputFile(appState appState) {
 		}
 		return
 	}
-	appState.inputFile.Set(file)
+	if filepath.Base(path) == "Posts.txt" {
+		logger.Printf("Automatically setting file type to Posts.txt")
+		appState.fileType.Set("Posts.txt")
+	}
+	if filepath.Base(path) == "user_data.json" {
+		logger.Printf("Automatically setting file type to user_data.json")
+		appState.fileType.Set("user_data.json")
+	}
+	appState.inputFile.Set(path)
 }
 
 func selectOutputDir(appState appState) {
