@@ -24,10 +24,10 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/ncruces/zenity"
 	"github.com/skratchdot/open-golang/open"
 )
 
@@ -455,31 +455,34 @@ func newDownloadListWidget(appState appState) *widget.List {
 }
 
 func selectInputFile(appState appState) {
-	fd := dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
-		if err == nil && file != nil {
-			path := file.URI().Path()
-			appState.inputFile.Set(path)
-			if filepath.Base(path) == "Posts.txt" {
-				logger.Printf("Automatically setting file type to Posts.txt")
-				appState.fileType.Set("Posts.txt")
-			}
-			if filepath.Base(path) == "user_data.json" {
-				logger.Printf("Automatically setting file type to user_data.json")
-				appState.fileType.Set("user_data.json")
-			}
+	file, err := zenity.SelectFile(
+		zenity.Title("Select TikTok video archive file"),
+		zenity.FileFilters{
+			{"JSON files", []string{"*.json"}, false},
+			{"Text files", []string{"*.txt"}, false},
+		},
+	)
+	if err != nil {
+		if err != zenity.ErrCanceled {
+			logger.Printf("Error selecting file: %v", err)
 		}
-	}, appState.window)
-	fd.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".json"}))
-	fd.Show()
+		return
+	}
+	appState.inputFile.Set(file)
 }
 
 func selectOutputDir(appState appState) {
-	fd := dialog.NewFolderOpen(func(dir fyne.ListableURI, err error) {
-		if err == nil && dir != nil {
-			appState.outputDir.Set(dir.Path())
+	dir, err := zenity.SelectFile(
+		zenity.Title("Select folder for downloaded videos"),
+		zenity.Directory(),
+	)
+	if err != nil {
+		if err != zenity.ErrCanceled {
+			logger.Printf("Error selecting directory: %v", err)
 		}
-	}, appState.window)
-	fd.Show()
+		return
+	}
+	appState.outputDir.Set(dir)
 }
 
 func getStatusIcon(status string) fyne.Resource {
