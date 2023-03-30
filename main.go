@@ -280,24 +280,10 @@ func createLogger() (*log.Logger, error) {
 
 func createUI(appState appState) {
 	// UI elements
-	inputButton := widget.NewButton("Select...", nil)
-	appState.inputFile.AddListener(binding.NewDataListener(func() {
-		inputFile, _ := appState.inputFile.Get()
-		if inputFile == "" {
-			inputButton.SetText("Select...")
-		} else {
-			inputButton.SetText(filepath.Base(inputFile))
-		}
-	}))
-	outputButton := widget.NewButton("Select...", nil)
-	appState.outputDir.AddListener(binding.NewDataListener(func() {
-		outputDir, _ := appState.outputDir.Get()
-		if outputDir == "" {
-			outputButton.SetText("Select...")
-		} else {
-			outputButton.SetText(fmt.Sprintf("%s", filepath.Base(outputDir)))
-		}
-	}))
+	inputFilename := widget.NewLabelWithData(appState.inputFile)
+	inputButton := widget.NewButton("Browse...", func() { selectInputFile(appState) })
+	outputDir := widget.NewLabelWithData(appState.outputDir)
+	outputButton := widget.NewButton("Browse...", nil)
 	initialFileType, _ := appState.fileType.Get()
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, func(fileType string) {
 		appState.fileType.Set(fileType)
@@ -363,9 +349,9 @@ func createUI(appState appState) {
 		nil, nil,
 		container.NewVBox(
 			container.New(layout.NewFormLayout(),
-				widget.NewLabel("Input file:"), inputButton,
+				widget.NewLabel("Read from:"), container.NewHBox(inputFilename, layout.NewSpacer(), inputButton),
 				widget.NewLabel("File type:"), fileTypeSelect,
-				widget.NewLabel("Output directory:"), outputButton,
+				widget.NewLabel("Download to:"), container.NewHBox(outputDir, layout.NewSpacer(), outputButton),
 			),
 			widget.NewAccordion(
 				widget.NewAccordionItem("Advanced Options",
