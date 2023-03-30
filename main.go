@@ -209,6 +209,7 @@ type appState struct {
 	total          binding.Int
 	globalProgress binding.Float
 	bytesPerSecond binding.Int
+	monitor        *flowrate.Monitor
 
 	// Mutable state, to work around the limitations of Fyne's data binding.
 	downloads *downloadState
@@ -247,6 +248,7 @@ func main() {
 		total:          binding.NewInt(),
 		globalProgress: binding.NewFloat(),
 		bytesPerSecond: binding.NewInt(),
+		monitor:        flowrate.New(100*time.Millisecond, 1*time.Second),
 		downloads: &downloadState{
 			data:   []download{},
 			widget: nil,
@@ -256,6 +258,8 @@ func main() {
 		cancelHook:    &atomic.Value{},
 		lock:          sync.Mutex{},
 	}
+
+	startMonitor(appState)
 
 	createUI(appState)
 
@@ -282,6 +286,16 @@ func createLogger() (*log.Logger, error) {
 	logFilePath = path
 	newLogger := log.New(io.MultiWriter(file, os.Stdout), "", log.Ldate|log.Ltime)
 	return newLogger, nil
+}
+
+func startMonitor(appState appState) {
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			bytesPerSecond := appState.monitor.Status().InstRate
+			appState.bytesPerSecond.Set(int(bytesPerSecond))
+		}
+	}()
 }
 
 func createUI(appState appState) {
@@ -324,7 +338,7 @@ func createUI(appState appState) {
 	})
 	fileTypeSelect.SetSelected(initialFileType)
 
-	parallelismSlider := widget.NewSliderWithData(1, 8, appState.parallelism)
+	parallelismSlider := widget.NewSliderWithData(1, 16, appState.parallelism)
 	if initialParallelism, _ := appState.parallelism.Get(); initialParallelism == 0 {
 		appState.parallelism.Set(8)
 	}
@@ -610,19 +624,6 @@ func downloadFiles(appState appState) {
 		downloadWg := sync.WaitGroup{}
 		downloadWg.Add(len(links))
 
-		monitor := flowrate.New(0, 0)
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(time.Second):
-					appState.bytesPerSecond.Set(int(monitor.Status().CurRate))
-				}
-			}
-		}()
-		defer cancel()
-
 		for i, _ := range links {
 			file := downloadableFiles[i]
 			filePath := file.path
@@ -659,7 +660,7 @@ func downloadFiles(appState appState) {
 				logger.Printf("Downloading %s...\n", fileName)
 				wc := &WriteCounter{
 					ProgressState: file.progress,
-					Monitor:       monitor,
+					Monitor:       appState.monitor,
 				}
 				file.status.Set("in progress")
 				err := downloadFile(ctx, link.Link, filePath, wc)
