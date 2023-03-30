@@ -388,6 +388,7 @@ func createUI(appState appState) {
 		errors, _ := appState.errors.Get()
 		if errors > 0 {
 			errorTracker.Text = fmt.Sprintf("(%d errors)", errors)
+			errorTracker.Refresh()
 		} else {
 			errorTracker.Text = ""
 		}
@@ -398,6 +399,7 @@ func createUI(appState appState) {
 		skipped, _ := appState.skipped.Get()
 		if skipped > 0 {
 			skipTracker.Text = fmt.Sprintf("(%d skipped)", skipped)
+			skipTracker.Refresh()
 		} else {
 			skipTracker.Text = ""
 		}
