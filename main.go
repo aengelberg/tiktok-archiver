@@ -22,13 +22,13 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/dialog"
+	fdialog "fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/skratchdot/open-golang/open"
+	"github.com/sqweek/dialog"
 )
 
 var (
@@ -455,31 +455,31 @@ func newDownloadListWidget(appState appState) *widget.List {
 }
 
 func selectInputFile(appState appState) {
-	fd := dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
-		if err == nil && file != nil {
-			path := file.URI().Path()
-			appState.inputFile.Set(path)
-			if filepath.Base(path) == "Posts.txt" {
-				logger.Printf("Automatically setting file type to Posts.txt")
-				appState.fileType.Set("Posts.txt")
+	fb := dialog.File().Filter("description", "txt", "json")
+	go func() {
+		filePath, err := fb.Load()
+		if err != nil {
+			if err != dialog.ErrCancelled {
+				logger.Printf("Error loading input file: %s", err)
 			}
-			if filepath.Base(path) == "user_data.json" {
-				logger.Printf("Automatically setting file type to user_data.json")
-				appState.fileType.Set("user_data.json")
-			}
+			return
 		}
-	}, appState.window)
-	fd.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".json"}))
-	fd.Show()
+		appState.inputFile.Set(filePath)
+	}()
 }
 
 func selectOutputDir(appState appState) {
-	fd := dialog.NewFolderOpen(func(dir fyne.ListableURI, err error) {
-		if err == nil && dir != nil {
-			appState.outputDir.Set(dir.Path())
+	db := dialog.Directory()
+	go func() {
+		dirPath, err := db.Browse()
+		if err != nil {
+			if err != dialog.ErrCancelled {
+				logger.Printf("Error loading output directory: %s", err)
+			}
+			return
 		}
-	}, appState.window)
-	fd.Show()
+		appState.outputDir.Set(dirPath)
+	}()
 }
 
 func getStatusIcon(status string) fyne.Resource {
@@ -526,7 +526,7 @@ func downloadFiles(appState appState) {
 		links, err := readAndParseFile(inputFilePath, fileType)
 		if err != nil {
 			logger.Printf("Error reading and parsing file: %v", err)
-			dialog.ShowError(err, appState.window)
+			fdialog.ShowError(err, appState.window)
 			appState.isDownloading.Set(false)
 			return
 		}
