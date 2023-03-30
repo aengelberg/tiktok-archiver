@@ -280,12 +280,15 @@ func createLogger() (*log.Logger, error) {
 
 func createUI(appState appState) {
 	// User inputs
+	inputIcon := widget.NewIcon(theme.FileIcon())
 	inputFilename := widget.NewLabel("No file selected")
 	appState.inputFile.AddListener(binding.NewDataListener(func() {
 		path, _ := appState.inputFile.Get()
 		if path == "" {
+			inputIcon.Hide()
 			inputFilename.SetText("No file selected")
 		} else {
+			inputIcon.Show()
 			inputFilename.SetText(filepath.Base(path))
 		}
 	}))
@@ -293,12 +296,15 @@ func createUI(appState appState) {
 		selectInputFile(appState)
 	})
 
+	outputIcon := widget.NewIcon(theme.FolderIcon())
 	outputDir := widget.NewLabel("No folder selected")
 	appState.outputDir.AddListener(binding.NewDataListener(func() {
 		path, _ := appState.outputDir.Get()
 		if path == "" {
+			outputIcon.Hide()
 			outputDir.SetText("No folder selected")
 		} else {
+			outputIcon.Show()
 			outputDir.SetText(filepath.Base(path))
 		}
 	}))
@@ -356,9 +362,9 @@ func createUI(appState appState) {
 		nil, nil,
 		container.NewVBox(
 			container.New(layout.NewFormLayout(),
-				widget.NewLabel("Read from:"), container.NewHBox(inputFilename, layout.NewSpacer(), inputButton),
+				widget.NewLabel("Read from:"), container.NewHBox(inputIcon, inputFilename, layout.NewSpacer(), inputButton),
 				widget.NewLabel("File type:"), fileTypeSelect,
-				widget.NewLabel("Download to:"), container.NewHBox(outputDir, layout.NewSpacer(), outputButton),
+				widget.NewLabel("Download to:"), container.NewHBox(outputIcon, outputDir, layout.NewSpacer(), outputButton),
 			),
 			widget.NewAccordion(
 				widget.NewAccordionItem("Advanced Options",
