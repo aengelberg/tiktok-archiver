@@ -279,28 +279,60 @@ func createLogger() (*log.Logger, error) {
 }
 
 func createUI(appState appState) {
-	// UI elements
-	inputFilename := widget.NewLabelWithData(appState.inputFile)
-	inputButton := widget.NewButton("Browse...", func() { selectInputFile(appState) })
-	outputDir := widget.NewLabelWithData(appState.outputDir)
-	outputButton := widget.NewButton("Browse...", nil)
+	// User inputs
+	inputFilename := widget.NewLabel("No file selected")
+	appState.inputFile.AddListener(binding.NewDataListener(func() {
+		path, _ := appState.inputFile.Get()
+		if path == "" {
+			inputFilename.SetText("No file selected")
+		} else {
+			inputFilename.SetText(filepath.Base(path))
+		}
+	}))
+	inputButton := widget.NewButton("Browse...", func() {
+		selectInputFile(appState)
+	})
+
+	outputDir := widget.NewLabel("No folder selected")
+	appState.outputDir.AddListener(binding.NewDataListener(func() {
+		path, _ := appState.outputDir.Get()
+		if path == "" {
+			outputDir.SetText("No folder selected")
+		} else {
+			outputDir.SetText(filepath.Base(path))
+		}
+	}))
+	outputButton := widget.NewButton("Browse...", func() {
+		selectOutputDir(appState)
+	})
+
 	initialFileType, _ := appState.fileType.Get()
 	fileTypeSelect := widget.NewSelect([]string{"Posts.txt", "user_data.json"}, func(fileType string) {
 		appState.fileType.Set(fileType)
 	})
 	fileTypeSelect.SetSelected(initialFileType)
+
 	parallelismSlider := widget.NewSliderWithData(1, 8, appState.parallelism)
 	if initialParallelism, _ := appState.parallelism.Get(); initialParallelism == 0 {
 		appState.parallelism.Set(8)
 	}
-	downloadButton := widget.NewButton("Download", nil)
+
+	// User actions
+	downloadButton := widget.NewButton("Download", func() {
+		downloadFiles(appState)
+	})
 	downloadButton.SetIcon(theme.DownloadIcon())
-	cancelButton := widget.NewButton("Cancel", nil)
+
+	cancelButton := widget.NewButton("Cancel", func() {
+		cancelDownloads(appState)
+	})
 	cancelButton.SetIcon(theme.CancelIcon())
+
 	logButton := widget.NewButton("Open Log", func() {
 		openLog()
 	})
 	logButton.SetIcon(theme.DocumentIcon())
+
 	appState.isDownloading.AddListener(binding.NewDataListener(func() {
 		isDownloading, _ := appState.isDownloading.Get()
 		if isDownloading {
@@ -311,35 +343,10 @@ func createUI(appState appState) {
 			cancelButton.Disable()
 		}
 	}))
+
+	// Advanced options
 	skipExistingCheckbox := widget.NewCheckWithData("Skip already-downloaded videos", appState.skipExisting)
 	appState.skipExisting.Set(true)
-	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
-
-	// Create a container to hold individual download items
-	downloadList := newDownloadListWidget(appState)
-	appState.downloads.widget = downloadList
-	scrollContainer := container.NewVScroll(downloadList)
-	// scrollContainer.SetMinSize(fyne.NewSize(400, 400))
-
-	errorTracker := canvas.NewText("", color.RGBA{R: 255, A: 255})
-	appState.errors.AddListener(binding.NewDataListener(func() {
-		errors, _ := appState.errors.Get()
-		if errors > 0 {
-			errorTracker.Text = fmt.Sprintf("(%d errors)", errors)
-		} else {
-			errorTracker.Text = ""
-		}
-	}))
-
-	skipTracker := canvas.NewText("", color.RGBA{R: 102, G: 153, B: 204, A: 255})
-	appState.skipped.AddListener(binding.NewDataListener(func() {
-		skipped, _ := appState.skipped.Get()
-		if skipped > 0 {
-			skipTracker.Text = fmt.Sprintf("(%d skipped)", skipped)
-		} else {
-			skipTracker.Text = ""
-		}
-	}))
 
 	leftSide := container.NewBorder(
 		nil, container.NewVBox(
@@ -369,6 +376,33 @@ func createUI(appState appState) {
 		),
 	)
 
+	// Real-time stats
+	errorTracker := canvas.NewText("", color.RGBA{R: 255, A: 255})
+	appState.errors.AddListener(binding.NewDataListener(func() {
+		errors, _ := appState.errors.Get()
+		if errors > 0 {
+			errorTracker.Text = fmt.Sprintf("(%d errors)", errors)
+		} else {
+			errorTracker.Text = ""
+		}
+	}))
+
+	skipTracker := canvas.NewText("", color.RGBA{R: 102, G: 153, B: 204, A: 255})
+	appState.skipped.AddListener(binding.NewDataListener(func() {
+		skipped, _ := appState.skipped.Get()
+		if skipped > 0 {
+			skipTracker.Text = fmt.Sprintf("(%d skipped)", skipped)
+		} else {
+			skipTracker.Text = ""
+		}
+	}))
+
+	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
+
+	downloadList := newDownloadListWidget(appState)
+	appState.downloads.widget = downloadList
+	scrollContainer := container.NewVScroll(downloadList)
+
 	rightSide := container.NewBorder(
 		container.NewVBox(
 			container.NewHBox(
@@ -389,18 +423,6 @@ func createUI(appState appState) {
 	content := container.NewHSplit(leftSide, rightSide)
 	content.SetOffset(0.4)
 
-	inputButton.OnTapped = func() {
-		selectInputFile(appState)
-	}
-	outputButton.OnTapped = func() {
-		selectOutputDir(appState)
-	}
-	downloadButton.OnTapped = func() {
-		downloadFiles(appState)
-	}
-	cancelButton.OnTapped = func() {
-		cancelDownloads(appState)
-	}
 	appState.window.SetContent(content)
 	appState.window.Resize(fyne.NewSize(800, 500))
 }
