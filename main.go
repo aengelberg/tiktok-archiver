@@ -403,14 +403,24 @@ func createUI(appState appState) {
 	)
 
 	// Real-time stats
-	fileCounter := widget.NewLabel("0 / 0")
+	fileCounter := widget.NewLabel("")
 	updateCounter := binding.NewDataListener(func() {
 		completed, _ := appState.completed.Get()
 		total, _ := appState.total.Get()
-		fileCounter.SetText(fmt.Sprintf("%d / %d", completed, total))
+		if total == 0 {
+			fileCounter.SetText("")
+		} else {
+			fileCounter.SetText(fmt.Sprintf("%d / %d videos processed", completed, total))
+		}
 	})
 	appState.completed.AddListener(updateCounter)
 	appState.total.AddListener(updateCounter)
+
+	dataSpeed := widget.NewLabel("")
+	appState.bytesPerSecond.AddListener(binding.NewDataListener(func() {
+		bps, _ := appState.bytesPerSecond.Get()
+		dataSpeed.SetText(fmt.Sprintf("Downloading %s/s", humanize.Bytes(uint64(bps))))
+	}))
 
 	errorTracker := canvas.NewText("", color.RGBA{R: 255, A: 255})
 	appState.errors.AddListener(binding.NewDataListener(func() {
@@ -434,12 +444,6 @@ func createUI(appState appState) {
 		}
 	}))
 
-	dataSpeed := widget.NewLabel("")
-	appState.bytesPerSecond.AddListener(binding.NewDataListener(func() {
-		bps, _ := appState.bytesPerSecond.Get()
-		dataSpeed.SetText(fmt.Sprintf("(%s/s)", humanize.Bytes(uint64(bps))))
-	}))
-
 	progressBar := widget.NewProgressBarWithData(appState.globalProgress)
 
 	downloadList := newDownloadListWidget(appState)
@@ -448,14 +452,13 @@ func createUI(appState appState) {
 
 	rightSide := container.NewBorder(
 		container.NewVBox(
+			dataSpeed,
+			progressBar,
 			container.NewHBox(
-				widget.NewLabel("Downloaded"),
 				fileCounter,
-				dataSpeed,
 				errorTracker,
 				skipTracker,
 			),
-			progressBar,
 		),
 		nil, nil, nil,
 		scrollContainer,
