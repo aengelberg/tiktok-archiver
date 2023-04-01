@@ -10,7 +10,8 @@ It is very different from other third-party TikTok downloading services (SnapTik
 * It downloads all of the videos from your account, including private and friends-only videos.
 * All of the videos will be unwatermarked, at the original resolution and quality that was uploaded to TikTok.
 
-<img width=600 src="https://user-images.githubusercontent.com/4122172/229266409-233422f5-c0da-46a5-a340-fb0f626f26e1.png">
+<img width=600 src="https://user-images.githubusercontent.com/4122172/229311721-6d170f0f-c9f3-4162-81b1-58f8a28c2b01.png">
+
 
 
 ## How to use it
