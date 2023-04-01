@@ -10,7 +10,8 @@ It is very different from other third-party TikTok downloading services (SnapTik
 * It downloads all of the videos from your account, including private and friends-only videos.
 * All of the videos will be unwatermarked, at the original resolution and quality that was uploaded to TikTok.
 
-<img src="https://user-images.githubusercontent.com/4122172/228669236-d127540c-76ef-4b80-8156-0000158e4227.png" width=500>
+<img width=600 src="https://user-images.githubusercontent.com/4122172/229266409-233422f5-c0da-46a5-a340-fb0f626f26e1.png">
+
 
 ## How to use it
 
@@ -30,10 +31,6 @@ Now, in TikTok Archiver:
 * After your batch download is complete, you may retry the failed downloads by clicking "Download" again. By default it will only try to download the videos that aren't already present in the output directory.
 
 # Installing
-
-## Windows
-
-Download the Windows zip file from the latest [release](https://github.com/aengelberg/tiktok-archiver/releases/latest), then unzip it. Then, open `TikTok Archiver.exe` to run the application.
 
 ## macOS
 
@@ -58,3 +55,9 @@ In the "Security & Privacy" section of your Settings app, click "Open Anyway".
 Finally, click "Open".
 
 <img width="275" alt="Screen Shot 2023-03-29 at 2 53 55 AM" src="https://user-images.githubusercontent.com/4122172/228497541-d5b3237f-ecc5-472f-a015-f13d25ebf3d5.png">
+
+## Windows
+
+Download the Windows zip file from the latest [release](https://github.com/aengelberg/tiktok-archiver/releases/latest), then unzip it. Then, open `TikTok Archiver.exe` to run the application.
+
+Unfortunately, because I haven't figured out code-signing yet, Windows Defender might kick in and tell you my app is malware. :(
