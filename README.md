@@ -34,30 +34,26 @@ Now, in TikTok Archiver:
 
 ## macOS
 
-Due to macOS's security safeguards against third-party applications, running TikTok Archiver for the first time takes a few extra steps.
+Due to macOS's security safeguards against third-party applications, running TikTok Archiver for the first time takes a couple extra steps.
 
 Download the macOS zip file from the latest [release](https://github.com/aengelberg/tiktok-archiver/releases/latest), then unzip it.
 
 <img width="146" alt="image" src="https://user-images.githubusercontent.com/4122172/228495873-4a83553e-9968-4015-9586-083fb911639b.png">
 
-Double-click on the TikTok Archiver app to open it.
+Double-click on the app to open it. You'll see this warning; press "OK".
 
-<img width="136" alt="image" src="https://user-images.githubusercontent.com/4122172/228496157-db785d98-9219-4283-aec7-9c791b00039e.png">
+<img width="265" alt="Screen Shot 2023-03-31 at 11 13 30 PM" src="https://user-images.githubusercontent.com/4122172/229269100-2202ecdb-5b2a-48e9-b5ba-12699395d7a8.png">
 
-The first time you try to open it, this security warning will appear. Click "Cancel".
+Now, rather than double-clicking on the app, right-click on it in Finder and click "Open".
 
-<img width="286" alt="Screen Shot 2023-03-29 at 2 51 02 AM" src="https://user-images.githubusercontent.com/4122172/228496823-3cbc204b-b0c7-4120-86dc-43efa547b037.png">
+<img width="329" alt="image" src="https://user-images.githubusercontent.com/4122172/229268919-2efdd37a-4d96-4a61-9b93-a74b8dbed2cc.png">
 
-In the "Security & Privacy" section of your Settings app, click "Open Anyway".
+A security warning will pop up; click "Open" to bypass it.
 
-<img width="500" alt="Screen Shot 2023-03-29 at 2 52 29 AM" src="https://user-images.githubusercontent.com/4122172/228497182-a6484515-95e2-4e70-b64e-f69c61d1dd7b.png">
-
-Finally, click "Open".
-
-<img width="275" alt="Screen Shot 2023-03-29 at 2 53 55 AM" src="https://user-images.githubusercontent.com/4122172/228497541-d5b3237f-ecc5-472f-a015-f13d25ebf3d5.png">
+<img width="275" alt="Screen Shot 2023-03-29 at 2 53 55 AM" src="https://user-images.githubusercontent.com/4122172/229268972-8c3b073d-aad3-49b1-a4a0-1734b0fdd13c.png">
 
 ## Windows
 
 Download the Windows zip file from the latest [release](https://github.com/aengelberg/tiktok-archiver/releases/latest), then unzip it. Then, open `TikTok Archiver.exe` to run the application.
 
-Unfortunately, because I haven't figured out code-signing yet, Windows Defender might kick in and tell you my app is malware. :(
+Please note that there is a risk of Windows Defender flagging this app as malware and not letting you run it. I'm still working on a workaround for this issue, apologies for the inconvenience.
