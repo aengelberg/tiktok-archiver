@@ -2,6 +2,10 @@
 
 <img src="https://user-images.githubusercontent.com/4122172/228493320-78a140b0-7a25-4ed9-9afc-4a815b93fe84.png" width=300>
 
+:arrow_right: [DOWNLOAD FOR WINDOWS](https://github.com/aengelberg/tiktok-archiver/releases/download/0.0.9/TikTok.Archiver-0.0.9-windows-amd64.zip)
+
+:arrow_right: [DOWNLOAD FOR MAC](https://github.com/aengelberg/tiktok-archiver/releases/download/0.0.9/TikTok.Archiver-0.0.9-macos-amd64.zip)
+
 TikTok Archiver is a tool for batch-archiving all the videos in your TikTok account. It is available to [install](#installing) on Windows and macOS.
 
 It is very different from other third-party TikTok downloading services (SnapTik, SaveTok, etc):
@@ -11,8 +15,6 @@ It is very different from other third-party TikTok downloading services (SnapTik
 * All of the videos will be unwatermarked, at the original resolution and quality that was uploaded to TikTok.
 
 <img width=600 src="https://user-images.githubusercontent.com/4122172/229311721-6d170f0f-c9f3-4162-81b1-58f8a28c2b01.png">
-
-
 
 ## How to use it
 
