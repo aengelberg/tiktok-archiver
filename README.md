@@ -1,10 +1,8 @@
-# TikTok Archiver
-
-:arrow_right: [DOWNLOAD FOR WINDOWS](https://github.com/aengelberg/tiktok-archiver/releases/download/0.0.9/TikTok.Archiver-0.0.9-windows-amd64.zip)
-
-:arrow_right: [DOWNLOAD FOR MAC](https://github.com/aengelberg/tiktok-archiver/releases/download/0.0.9/TikTok.Archiver-0.0.9-macos-amd64.zip)
-
 <img src="https://user-images.githubusercontent.com/4122172/228493320-78a140b0-7a25-4ed9-9afc-4a815b93fe84.png" width=300>
+
+[Download for Windows](https://github.com/aengelberg/tiktok-archiver/releases/download/0.0.9/TikTok.Archiver-0.0.9-windows-amd64.zip)
+
+[Download for macOS](https://github.com/aengelberg/tiktok-archiver/releases/download/0.0.9/TikTok.Archiver-0.0.9-macos-amd64.zip)
 
 TikTok Archiver is a tool for batch-archiving all the videos in your TikTok account. It is available to [install](#installing) on Windows and macOS.
 
